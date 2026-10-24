@@ -11,3 +11,4 @@
 - 2026-10-24 21:17 [B13] CP-02 (backend/services/stream_service.py): Dem nguoi xem camera.change_viewers(+1) khi vao stream va (-1) trong finally; chi ma hoa khi co viewers > 0
 - 2026-10-24 21:53 [B13] CP-04 (backend/services/stream_service.py): Kiểm tra request.is_disconnected() và xử lý ngắt kết nối trong generate_mjpeg_stream; thêm stub draw_overlay cho CP-03
 - 2026-10-24 21:56 [B13] CP-05 (backend/api/stream.py; backend/services/stream_service.py): Xác thực tính độc lập của stream và AI: chỉ mã hóa khi có viewers, endpoint GET /api/stream/snapshot không tăng viewers
+- 2026-10-24 22:04 [B11] (backend/services/camera_service.py): Nghiệm thu an toàn luồng (threading.Lock): bộ đệm vòng _buffer và record() chạy song song tải cao không lỗi, không deadlock
