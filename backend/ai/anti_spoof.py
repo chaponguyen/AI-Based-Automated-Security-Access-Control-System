@@ -4,7 +4,10 @@
 import logging
 import os
 
-from .config import ANTI_SPOOF_MODEL, ANTI_SPOOF_SIZE
+import cv2
+import numpy as np
+
+from .config import ANTI_SPOOF_MODEL, ANTI_SPOOF_SCALE, ANTI_SPOOF_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +66,43 @@ def model_info():
         "output_name": out.name,
         "output_shape": list(out.shape),
     }
+
+
+def crop_anti_spoof(image_bgr, bbox):
+    """Cắt vùng MỞ RỘNG quanh mặt cho MiniFASNetV2, trả ảnh BGR 80x80.
+
+    Khác vùng cắt nhận diện: lấy cả tóc, vai và nền quanh mặt (hệ số ANTI_SPOOF_SCALE
+    quanh tâm bbox), rồi thu nhỏ về 80x80 đúng đầu vào model.
+    """
+    if image_bgr is None or not isinstance(image_bgr, np.ndarray) or image_bgr.ndim != 3:
+        raise ValueError("image_bgr phai la numpy array BGR HxWx3")
+    if bbox is None or len(bbox) != 4:
+        raise ValueError("bbox phai co 4 so [x1, y1, x2, y2]")
+
+    src_h, src_w = image_bgr.shape[:2]
+    x1, y1, x2, y2 = (float(v) for v in bbox)
+    box_w, box_h = x2 - x1, y2 - y1
+    if box_w <= 1 or box_h <= 1:
+        raise ValueError(f"bbox khong hop le: {list(bbox)}")
+    if x2 <= 0 or y2 <= 0 or x1 >= src_w or y1 >= src_h:
+        raise ValueError(f"bbox nam ngoai anh: {list(bbox)}")
+
+    # Không phóng quá biên ảnh, nếu không vùng cắt sẽ tràn ra ngoài.
+    scale = min(ANTI_SPOOF_SCALE, (src_w - 1) / box_w, (src_h - 1) / box_h)
+    new_w, new_h = box_w * scale, box_h * scale
+    center_x, center_y = x1 + box_w / 2.0, y1 + box_h / 2.0
+
+    left = max(0, int(center_x - new_w / 2.0))
+    top = max(0, int(center_y - new_h / 2.0))
+    right = min(src_w - 1, int(center_x + new_w / 2.0))
+    bottom = min(src_h - 1, int(center_y + new_h / 2.0))
+
+    crop = image_bgr[top:bottom + 1, left:right + 1]
+    if crop.size == 0:
+        raise ValueError(f"bbox nam ngoai anh: {list(bbox)}")
+
+    return cv2.resize(crop, (ANTI_SPOOF_SIZE, ANTI_SPOOF_SIZE),
+                      interpolation=cv2.INTER_LINEAR)
 
 
 def check_liveness(image_bgr, bbox):
