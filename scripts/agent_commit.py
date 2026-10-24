@@ -13,7 +13,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ALLOWED = {
-    "A1": ["backend/ai"],
+    "A1": ["backend/ai", "scripts/measure_pairs.py"],
     "A2": ["backend/api", "backend/services", "backend/database", "backend/migrations",
            "backend/alembic.ini", "backend/main.py", "backend/.env.example",
            "scripts/tts_probe.py"],
