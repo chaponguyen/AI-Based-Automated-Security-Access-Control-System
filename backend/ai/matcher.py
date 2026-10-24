@@ -31,4 +31,41 @@ def cosine(a, b):
 def best_match(embedding, gallery):
     """gallery: {user_id: [embedding,...]}. Mỗi người lấy trung bình top-3 độ giống cosine.
     Trả về (user_id | None, similarity)."""
-    raise NotImplementedError
+    if embedding is None:
+        return None, 0.0
+    if not gallery:
+        return None, 0.0
+
+    query = _unit(embedding)
+    if query is None:
+        return None, 0.0
+
+    best_id = None
+    best_sim = -1.0
+    for user_id, vectors in gallery.items():
+        if vectors is None:
+            continue
+        matrix = np.asarray(vectors, dtype=np.float64)
+        if matrix.size == 0:
+            continue
+        if matrix.ndim == 1:
+            matrix = matrix.reshape(1, -1)
+        if matrix.ndim != 2 or matrix.shape[1] != query.size:
+            raise ValueError(
+                f"gallery cua {user_id!r} phai co shape (n, {query.size}), nhan duoc {matrix.shape}")
+
+        norms = np.linalg.norm(matrix, axis=1)
+        valid = norms > 1e-12
+        if not np.any(valid):
+            continue
+        sims = (matrix[valid] / norms[valid, None]) @ query
+        k = min(3, sims.size)
+        similarity = float(np.sort(sims)[-k:].mean())
+        if similarity > best_sim:
+            best_id, best_sim = user_id, similarity
+
+    if best_id is None:
+        return None, 0.0
+    if best_sim >= SIM_THRESHOLD:
+        return best_id, best_sim
+    return None, best_sim
