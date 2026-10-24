@@ -1,5 +1,5 @@
 # Agent 2 — cấu trúc chính thức: docs/context/DB_SCHEMA.md
-from sqlalchemy import Column, Integer, String, DateTime, CheckConstraint, func
+from sqlalchemy import Column, Integer, String, Float, DateTime, CheckConstraint, ForeignKey, ARRAY, func
 from database.database import Base
 
 
@@ -26,3 +26,12 @@ class User(Base):
         if self.id is None:
             return None
         return f"USR{self.id:06d}"
+
+
+class FaceEmbedding(Base):
+    """Bảng lưu vector đặc trưng khuôn mặt (CP-03)."""
+    __tablename__ = "face_embeddings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    embedding = Column(ARRAY(Float), nullable=False)  # 512 chiều, đã chuẩn hóa L2, không dùng pgvector
