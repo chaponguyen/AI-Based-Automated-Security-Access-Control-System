@@ -7,7 +7,7 @@ import os
 import cv2
 import numpy as np
 
-from .config import ANTI_SPOOF_MODEL, ANTI_SPOOF_SCALE, ANTI_SPOOF_SIZE
+from .config import ANTI_SPOOF_MODEL, ANTI_SPOOF_SCALE, ANTI_SPOOF_SIZE, LIVENESS_MIN
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,52 @@ def crop_anti_spoof(image_bgr, bbox):
                       interpolation=cv2.INTER_LINEAR)
 
 
+def _preprocess(crop_bgr):
+    """BGR 80x80 -> tensor 1x3x80x80 float32.
+
+    Model gốc không chia 255 và không trừ mean: giữ nguyên giá trị 0..255 như
+    lúc huấn luyện (đã đối chiếu mã tham chiếu MiniFASNetV2).
+    """
+    if crop_bgr.shape != (ANTI_SPOOF_SIZE, ANTI_SPOOF_SIZE, 3):
+        raise ValueError(
+            f"anh dau vao phai co shape ({ANTI_SPOOF_SIZE}, {ANTI_SPOOF_SIZE}, 3), "
+            f"nhan duoc {crop_bgr.shape}")
+    tensor = crop_bgr.astype(np.float32)
+    tensor = np.transpose(tensor, (2, 0, 1))[None, ...]
+    return np.ascontiguousarray(tensor)
+
+
+def _softmax(logits):
+    """Softmax ổn định số học cho vector logits 3 lớp."""
+    values = np.asarray(logits, dtype=np.float64).reshape(-1)
+    shifted = values - np.max(values)
+    exp = np.exp(shifted)
+    return exp / np.sum(exp)
+
+
+def liveness_score(image_bgr, bbox):
+    """Xác suất lớp "thật" (0..1) của khuôn mặt trong bbox."""
+    crop = crop_anti_spoof(image_bgr, bbox)
+    session = _get_session()
+    inp = session.get_inputs()[0]
+    out = session.get_outputs()[0]
+    logits = session.run([out.name], {inp.name: _preprocess(crop)})[0]
+    probs = _softmax(np.asarray(logits).reshape(-1))
+    if probs.size < 3:
+        raise RuntimeError(f"model chong gia mao phai tra 3 lop, nhan duoc {probs.size}")
+    # Theo repo goc: lop 0 = fake, lop 1 = real, lop 2 = fake.
+    return float(probs[1])
+
+
 def check_liveness(image_bgr, bbox):
-    """Trả về (is_real: bool, score: float)."""
-    raise NotImplementedError
+    """Trả về (is_real: bool, score: float).
+
+    Ảnh nhiều mặt thì A2 gọi hàm này riêng cho từng bbox. Bbox không hợp lệ
+    trả (False, 0.0) và ghi cảnh báo, không làm sập request.
+    """
+    try:
+        score = liveness_score(image_bgr, bbox)
+    except (TypeError, ValueError) as exc:
+        logger.warning("Bbox khong hop le cho kiem tra song: %r (%s)", bbox, exc)
+        return False, 0.0
+    return bool(score >= LIVENESS_MIN), float(score)
