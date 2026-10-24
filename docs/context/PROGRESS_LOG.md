@@ -12,3 +12,4 @@
 - 2026-10-24 21:53 [B13] CP-04 (backend/services/stream_service.py): Kiểm tra request.is_disconnected() và xử lý ngắt kết nối trong generate_mjpeg_stream; thêm stub draw_overlay cho CP-03
 - 2026-10-24 21:56 [B13] CP-05 (backend/api/stream.py; backend/services/stream_service.py): Xác thực tính độc lập của stream và AI: chỉ mã hóa khi có viewers, endpoint GET /api/stream/snapshot không tăng viewers
 - 2026-10-24 22:04 [B11] (backend/services/camera_service.py): Nghiệm thu an toàn luồng (threading.Lock): bộ đệm vòng _buffer và record() chạy song song tải cao không lỗi, không deadlock
+- 2026-10-24 22:26 [B1] CP-01 (backend/database/models.py; backend/database/database.py): Bảng users: id (PK autoincrement), full_name String(150), age Integer, apartment_number String(20) có index
