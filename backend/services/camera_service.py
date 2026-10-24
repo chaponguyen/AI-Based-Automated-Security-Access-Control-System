@@ -2,13 +2,38 @@ import os
 import time
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, List, Callable
+from typing import Optional, Tuple, List, Callable, Union
 from collections import deque
 import threading
 import numpy as np
 import cv2
+from dotenv import load_dotenv
+
+# Tải biến môi trường từ .env
+load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_int_env(key: str, default: int) -> int:
+    """Đọc biến môi trường kiểu số nguyên, dùng mặc định nếu thiếu, báo lỗi nếu sai kiểu."""
+    raw = os.getenv(key)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError as e:
+        msg = f"Cấu hình '{key}={raw}' không hợp lệ: phải là số nguyên."
+        logger.error(msg)
+        raise ValueError(msg) from e
+
+
+def _parse_str_env(key: str, default: str) -> str:
+    """Đọc biến môi trường kiểu chuỗi."""
+    raw = os.getenv(key)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip()
 
 
 class FrameSource(ABC):
@@ -50,18 +75,24 @@ class LocalCamera(FrameSource):
 
     def __init__(
         self,
-        index: Optional[int] = None,
+        index: Optional[Union[int, str]] = None,
         width: Optional[int] = None,
         height: Optional[int] = None,
+        source: Optional[str] = None,
     ):
-        # Lấy từ tham số hoặc biến môi trường .env
-        env_index = os.getenv("CAMERA_INDEX", "0")
-        env_w = os.getenv("CAMERA_W", "1280")
-        env_h = os.getenv("CAMERA_H", "720")
+        self.source = source if source is not None else _parse_str_env("CAMERA_SOURCE", "local")
 
-        self.index = int(index if index is not None else env_index)
-        self.width = int(width if width is not None else env_w)
-        self.height = int(height if height is not None else env_h)
+        # Đọc cấu hình từ tham số hoặc .env (CP-05)
+        if index is not None:
+            self.index = index
+        else:
+            if self.source == "local":
+                self.index = _parse_int_env("CAMERA_INDEX", 0)
+            else:
+                self.index = self.source
+
+        self.width = int(width if width is not None else _parse_int_env("CAMERA_W", 1280))
+        self.height = int(height if height is not None else _parse_int_env("CAMERA_H", 720))
 
         self._cap: Optional[cv2.VideoCapture] = None
         self._running: bool = False
@@ -93,10 +124,14 @@ class LocalCamera(FrameSource):
                     pass
                 self._cap = None
 
-            # Trên Windows dùng CAP_DSHOW giúp mở nhanh hơn
-            cap = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
-            if not cap.isOpened():
-                # Fallback nếu DirectShow không mở được
+            # Trên Windows dùng CAP_DSHOW giúp mở nhanh hơn nếu là camera cục bộ (int index)
+            if isinstance(self.index, int):
+                cap = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
+                if not cap.isOpened():
+                    # Fallback nếu DirectShow không mở được
+                    cap = cv2.VideoCapture(self.index)
+            else:
+                # Giai đoạn 3: nguồn URL từ xa (ví dụ ESP32-CAM stream http://...)
                 cap = cv2.VideoCapture(self.index)
 
             if cap.isOpened():

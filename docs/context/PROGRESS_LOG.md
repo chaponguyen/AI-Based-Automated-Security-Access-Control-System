@@ -5,3 +5,4 @@
 - 2026-10-24 20:15 [B11] CP-02 (backend/services/camera_service.py): Luong nen daemon (_worker, start, stop) va tu mo lai khi mat ket noi (backoff 1s-10s)
 - 2026-10-24 20:53 [B11] CP-03 (backend/services/camera_service.py; backend/services/ai_control.py): Bo dem vong 35 khung deque(maxlen=35), last_seconds, record(3.0) lay mau 10 fps (on_tick), module ai_control.py co paused
 - 2026-10-24 20:58 [B11] CP-04 (backend/api/camera.py; backend/main.py): Tao endpoint GET /api/camera/status (CameraStatusResponse) va dang ky router vao main.py
+- 2026-10-24 21:01 [B11] CP-05 (backend/.env.example; backend/services/camera_service.py): Chu thich .env.example, load_dotenv, _parse_int_env va _parse_str_env kiem tra kieu, ho tro local index va URL stream
