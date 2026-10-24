@@ -3,6 +3,7 @@ import time
 import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List, Callable
+from collections import deque
 import threading
 import numpy as np
 import cv2
@@ -76,6 +77,11 @@ class LocalCamera(FrameSource):
         self._stop_event = threading.Event()
         self._fps_count: int = 0
         self._fps_start_time: float = time.time()
+
+        # Bộ đệm vòng 3.5 giây lấy mẫu 10 fps (CP-03, maxlen=35 khung ~95 MB ở 720p)
+        self._buffer: deque = deque(maxlen=35)
+        self._last_sample_time: float = 0.0
+        self._frame_cond = threading.Condition(self._lock)
 
     def open(self) -> bool:
         """Mở kết nối camera với DirectShow trên Windows."""
@@ -184,6 +190,14 @@ class LocalCamera(FrameSource):
                     self._latest_time = now
                     self._running = True
 
+                    # Lấy mẫu ~10 khung/giây vào bộ đệm vòng (khoảng 35 khung cho 3.5 giây)
+                    # Ước lượng bộ nhớ ở 720p: 35 * (1280 * 720 * 3) bytes ≈ 95 MB
+                    if now - self._last_sample_time >= 0.095:
+                        self._buffer.append((now, frame))
+                        self._last_sample_time = now
+
+                    self._frame_cond.notify_all()
+
                 self._fps_count += 1
                 elapsed = now - self._fps_start_time
                 if elapsed >= 1.0:
@@ -220,12 +234,59 @@ class LocalCamera(FrameSource):
             return self._latest_time, self._latest_frame
 
     def last_seconds(self, sec: float) -> List[Tuple[float, np.ndarray]]:
-        """TODO (CP-03): Trả về danh sách khung hình từ bộ đệm vòng."""
-        return []
+        """Trả về danh sách (thời điểm, khung hình) trong sec giây vừa qua từ bộ đệm vòng."""
+        cutoff = time.time() - sec
+        with self._lock:
+            return [(t, f) for t, f in self._buffer if t >= cutoff]
 
-    def record(self, sec: float, on_tick: Optional[Callable[[int, int], None]] = None) -> List[np.ndarray]:
-        """TODO (CP-03): Thu thập các khung hình mới trong sec giây."""
-        return []
+    def record(
+        self,
+        sec: float,
+        on_tick: Optional[Callable[[int, int], None]] = None,
+    ) -> List[np.ndarray]:
+        """Thu các khung hình mới trong sec giây tiếp theo với tốc độ lấy mẫu ~10 khung/giây.
+
+        Gọi on_tick(t_ms, got) mỗi khung thu được.
+        Trả về danh sách các khung hình đã thu (khoảng 25 - 32 khung với sec=3.0).
+        """
+        frames: List[np.ndarray] = []
+        start_time = time.time()
+        end_time = start_time + sec
+        last_frame_ts: Optional[float] = None
+        target_interval = 0.10  # 10 fps
+        tolerance = 0.035
+        max_frames = int(round(sec * 10.0)) + 2  # Với sec=3.0 tối đa 32 khung
+
+        with self._frame_cond:
+            # Ghi nhận timestamp hiện tại để chỉ nhận các khung mới sau khi gọi record
+            last_frame_ts = self._latest_time
+
+            while True:
+                now = time.time()
+                remaining = end_time - now
+                if remaining <= 0 or len(frames) >= max_frames:
+                    break
+
+                self._frame_cond.wait(timeout=min(remaining, 0.05))
+                now = time.time()
+                if now >= end_time or len(frames) >= max_frames:
+                    break
+
+                # Kiểm tra có khung hình mới từ luồng nền không
+                if self._latest_time is not None and self._latest_time != last_frame_ts:
+                    last_frame_ts = self._latest_time
+                    target_time = start_time + len(frames) * target_interval - tolerance
+                    if now >= target_time and self._latest_frame is not None:
+                        frames.append(self._latest_frame.copy())
+                        got = len(frames)
+                        t_ms = int((now - start_time) * 1000)
+                        if on_tick is not None:
+                            try:
+                                on_tick(t_ms, got)
+                            except Exception as e:
+                                logger.warning("Lỗi trong on_tick callback của record: %s", e)
+
+        return frames
 
     def status(self) -> dict:
         """Thông tin trạng thái camera theo API contract."""
