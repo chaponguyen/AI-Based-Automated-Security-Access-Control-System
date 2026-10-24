@@ -21,6 +21,7 @@
 | Chống lặp: cư dân 60 giây; người lạ cần 3/5 kết quả từ chối rồi nghỉ 15 giây | Tránh loa đọc liên tục khi người đứng yên trước camera |
 | Chạy song song bằng git worktree, mỗi Agent một nhánh; commit qua `scripts/agent_commit.py` | `git add -A` trong cùng một thư mục làm Agent này commit nhầm code dở của Agent kia |
 | Đổi contract (hàm, route, schema) phải được chủ dự án duyệt trước | Ba Agent song song dựa vào contract; một Agent tự đổi sẽ làm hai Agent kia hỏng |
+| Mỗi viewer mã hóa JPEG riêng nên CPU tăng gần tuyến tính theo số viewers (13% / 20,8% / 55% với 0 / 1 / 3 viewers) | Hiện tại hệ thống phục vụ nội bộ ít người xem; phương án nếu cần cho nhiều client: mã hóa một lần chia sẻ buffer cho nhiều client |
 
 ## Đề xuất đổi contract
 (Agent ghi đề xuất ở đây: ID việc, thay đổi muốn làm, lý do, Agent nào bị ảnh hưởng. Chủ dự án duyệt hoặc từ chối rồi ghi kết quả bên cạnh.)
