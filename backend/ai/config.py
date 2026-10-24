@@ -14,3 +14,9 @@ BLUR_MIN = 60.0             # phương sai Laplacian tối thiểu
 BRIGHT_RANGE = (50.0, 210.0)  # khoảng trung bình xám hợp lệ
 MAX_YAW_RATIO = 0.35        # lệch mũi so với trung điểm hai mắt, theo khoảng cách hai mắt
 MAX_ROLL_DEG = 20.0         # góc nghiêng đường nối hai mắt
+
+# Chống giả mạo (MiniFASNetV2, ONNX)
+ANTI_SPOOF_SCALE = 2.7      # hệ số mở rộng bbox quanh tâm, theo cấu hình gốc của model
+ANTI_SPOOF_SIZE = 80        # đầu vào model là 80x80
+ANTI_SPOOF_MODEL = "2.7_80x80_MiniFASNetV2.onnx"  # đặt trong backend/ai/weights/
+LIVENESS_MIN = 0.60         # xác suất lớp "thật" tối thiểu để coi là người thật
