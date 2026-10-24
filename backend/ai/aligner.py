@@ -5,6 +5,13 @@ import numpy as np
 
 from .config import CROP_SIZE
 
+# Hệ số khung hiển thị (tight box) theo khoảng cách hai mắt d.
+# Chỉnh 4 số này nếu khung còn lấn tóc/tai hoặc cắt mất cằm.
+BOX_LEFT = 0.95    # x1 = cx - BOX_LEFT * d
+BOX_RIGHT = 0.95   # x2 = cx + BOX_RIGHT * d
+BOX_UP = 0.55      # y1 = eye_y - BOX_UP * d
+BOX_DOWN = 0.55    # y2 = mouth_y + BOX_DOWN * d
+
 
 def _landmarks_5x2(kps):
     """Chuẩn hóa landmark về float32 (5, 2); sai hình dạng thì ném ValueError."""
@@ -40,6 +47,36 @@ def crop_face(image_bgr, kps):
     return np.ascontiguousarray(crop, dtype=np.uint8)
 
 
-def tight_box(kps):
-    """Khung hiển thị trên UI, tính từ landmark (lông mày đến cằm), không phải bbox thô của SCRFD."""
-    raise NotImplementedError
+def tight_box(kps, image_shape=None):
+    """Khung hiển thị trên UI, tính từ landmark (lông mày đến cằm), không phải bbox thô của SCRFD.
+
+    Trả (x1, y1, x2, y2) theo pixel, làm tròn về int. Nếu truyền `image_shape`
+    (dạng (h, w) hoặc (h, w, 3), hoặc chính mảng ảnh) thì khung được kẹp trong biên ảnh.
+    """
+    landmarks = _landmarks_5x2(kps)
+
+    left_eye, right_eye = landmarks[0], landmarks[1]
+    d = float(np.linalg.norm(left_eye - right_eye))
+    cx = float((left_eye[0] + right_eye[0]) / 2.0)
+    eye_y = float((left_eye[1] + right_eye[1]) / 2.0)
+    mouth_y = float((landmarks[3][1] + landmarks[4][1]) / 2.0)
+
+    x1 = int(round(cx - BOX_LEFT * d))
+    x2 = int(round(cx + BOX_RIGHT * d))
+    y1 = int(round(eye_y - BOX_UP * d))
+    y2 = int(round(mouth_y + BOX_DOWN * d))
+
+    if image_shape is not None:
+        shape = getattr(image_shape, "shape", image_shape)
+        if len(shape) < 2:
+            raise ValueError(f"image_shape phai co it nhat 2 chieu, nhan duoc {shape}")
+        h, w = int(shape[0]), int(shape[1])
+        x1 = min(max(x1, 0), w - 1)
+        x2 = min(max(x2, 0), w - 1)
+        y1 = min(max(y1, 0), h - 1)
+        y2 = min(max(y2, 0), h - 1)
+        # Ảnh quá nhỏ hoặc landmark sát biên có thể làm khung bị dẹt: giữ tối thiểu 1 pixel.
+        x2 = max(x2, x1 + 1)
+        y2 = max(y2, y1 + 1)
+
+    return x1, y1, x2, y2
