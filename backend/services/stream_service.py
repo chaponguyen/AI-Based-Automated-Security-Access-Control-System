@@ -14,6 +14,17 @@ from services.camera_service import get_camera
 logger = logging.getLogger(__name__)
 
 
+def draw_overlay(frame: np.ndarray) -> np.ndarray:
+    """Vẽ khung và nhãn lên khung hình stream (CP-03 STUB).
+
+    TODO (CP-03): Tích hợp với B12 (AI Engine) khi có:
+    - Nhận diện cư dân: vẽ tight_box màu xanh lá (0, 255, 0), nhãn full_name, 5 landmarks
+    - Người lạ / từ chối: vẽ tight_box màu đỏ (0, 0, 255), nhãn "Không xác định"
+    Hiện tại trả về khung hình gốc để không ảnh hưởng stream và AI.
+    """
+    return frame
+
+
 async def generate_mjpeg_stream(request: Request) -> AsyncGenerator[bytes, None]:
     """Tạo luồng stream MJPEG multipart/x-mixed-replace cho trình duyệt.
     
@@ -42,8 +53,9 @@ async def generate_mjpeg_stream(request: Request) -> AsyncGenerator[bytes, None]
 
     try:
         while True:
-            # Kiểm tra client đã ngắt kết nối chưa (CP-04)
+            # CP-04: Đóng kết nối thì dừng stream ngay lập tức
             if await request.is_disconnected():
+                logger.info("Phát hiện client đã ngắt kết nối qua request.is_disconnected(), dừng stream.")
                 break
 
             now_ts, frame = camera.latest()
@@ -60,15 +72,15 @@ async def generate_mjpeg_stream(request: Request) -> AsyncGenerator[bytes, None]
 
             last_frame_ts = now_ts
 
-            # TODO (CP-03): Vẽ khung nhận diện và nhãn khi đã có AI Engine
+            # CP-03 (STUB): Vẽ khung nhận diện và nhãn (chờ tích hợp AI từ B12)
+            display_frame = draw_overlay(frame)
 
             # Resize giảm tải băng thông và CPU nếu khung gốc lớn hơn STREAM_WIDTH
-            h, w = frame.shape[:2]
+            h, w = display_frame.shape[:2]
             if w > stream_width:
                 new_h = int(h * stream_width / w)
-                display_frame = cv2.resize(frame, (stream_width, new_h), interpolation=cv2.INTER_AREA)
-            else:
-                display_frame = frame
+                display_frame = cv2.resize(display_frame, (stream_width, new_h), interpolation=cv2.INTER_AREA)
+
 
             # Mã hóa JPEG
             ret, jpeg_buffer = cv2.imencode(
