@@ -21,6 +21,7 @@
 | Chống lặp: cư dân 60 giây; người lạ cần 3/5 kết quả từ chối rồi nghỉ 15 giây | Tránh loa đọc liên tục khi người đứng yên trước camera |
 | Chạy song song bằng git worktree, mỗi Agent một nhánh; commit qua `scripts/agent_commit.py` | `git add -A` trong cùng một thư mục làm Agent này commit nhầm code dở của Agent kia |
 | Đổi contract (hàm, route, schema) phải được chủ dự án duyệt trước | Ba Agent song song dựa vào contract; một Agent tự đổi sẽ làm hai Agent kia hỏng |
+| B4 chưa đạt tiêu chí chống giả mạo: 8/8 ảnh chụp lại màn hình lọt ở mọi ngưỡng 0,40–0,80; giữ `LIVENESS_MIN=0,60` | MiniFASNetV2 bỏ sót replay phủ kín khung (mất viền màn hình trong vùng cắt 2,7). Chưa có ngưỡng nào tách được ảnh thật/giả trên bộ hiện tại; cần thêm liveness theo thời gian hoặc model khác rồi đo lại, không tăng ngưỡng >0,99 dựa trên 8 ảnh |
 
 ## Đề xuất đổi contract
 (Agent ghi đề xuất ở đây: ID việc, thay đổi muốn làm, lý do, Agent nào bị ảnh hưởng. Chủ dự án duyệt hoặc từ chối rồi ghi kết quả bên cạnh.)
