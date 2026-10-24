@@ -5,6 +5,9 @@
 DET_SIZE = (640, 640)
 DET_SCORE_MIN = 0.5
 
+# Cắt mặt căn chỉnh (ArcFace): chỉ lông mày đến cằm, không tóc và tai
+CROP_SIZE = 112
+
 # Lọc chất lượng khung hình khi quay đăng ký 3 giây
 MIN_FACE_PX = 80            # cạnh ngắn của bbox, tính bằng pixel
 BLUR_MIN = 60.0             # phương sai Laplacian tối thiểu
