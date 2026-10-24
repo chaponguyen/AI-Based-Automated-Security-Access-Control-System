@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+backend/.env
+backend/ai/weights/
+frontend/node_modules/
+frontend/dist/
+esp32-cam/.pio/
+esp32-cam/src/wifi_config.h
+embedded/stm32-security-lock/Debug/
+test_data/
+out/

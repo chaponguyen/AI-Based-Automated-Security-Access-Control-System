@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Access – Quản lý an ninh chung cư</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f2f5f7;--sf:#fff;--tx:#12202c;--mu:#5a6a78;--bd:#d9e1e8;--ac:#0e7490;--acs:#e0f2f7;--ok:#15803d;--oks:#dcfce7;--bad:#b91c1c;--bads:#fee2e2;--wn:#a16207;--wns:#fef3c7;--cam:#1c2832;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e151b;--sf:#17212a;--tx:#e6edf3;--mu:#93a4b3;--bd:#2a3844;--ac:#38bdf8;--acs:#12303d;--ok:#4ade80;--oks:#10321f;--bad:#f87171;--bads:#3b1616;--wn:#fbbf24;--wns:#3a2c0a;--cam:#0a1015;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e151b;--sf:#17212a;--tx:#e6edf3;--mu:#93a4b3;--bd:#2a3844;--ac:#38bdf8;--acs:#12303d;--ok:#4ade80;--oks:#10321f;--bad:#f87171;--bads:#3b1616;--wn:#fbbf24;--wns:#3a2c0a;--cam:#0a1015;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 'Be Vietnam Pro',system-ui,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px}
+h1{font-size:18px;margin:0;font-weight:700}h1 small{display:block;font-weight:400;color:var(--mu);font-size:13px}
+h3{font-size:15px;margin:0 0 10px}
+nav{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--bd);margin-bottom:16px}
+nav a{padding:9px 14px;color:var(--mu);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent;font-weight:500}
+nav a.on{color:var(--ac);border-color:var(--ac)}
+.chip{display:inline-block;padding:2px 10px;border-radius:99px;font-size:13px;font-weight:500;background:var(--acs);color:var(--ac)}
+.chip.ok{background:var(--oks);color:var(--ok)}.chip.bad{background:var(--bads);color:var(--bad)}.chip.wn{background:var(--wns);color:var(--wn)}
+.panel{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:16px}
+.door{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;border-left:6px solid var(--bad)}
+.door.open{border-color:var(--ok)}
+.door .st{font-size:28px;font-weight:700;line-height:1.2}
+.bar{height:8px;background:var(--bd);border-radius:9px;overflow:hidden;margin:8px 0;min-width:220px}.bar i{display:block;height:100%;width:0;background:var(--ok);transition:width 1s linear}
+.nums{display:flex;flex-wrap:wrap;margin-bottom:16px}
+.nums div{flex:1 1 120px;padding:4px 16px;border-left:1px solid var(--bd)}.nums div:first-child{border:0;padding-left:0}
+.nums b{display:block;font-size:26px;font-weight:700}.mu{color:var(--mu);font-size:13px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.g2{grid-template-columns:1fr}}
+.dev{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)}.dev:last-child{border:0}
+.tw{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;color:var(--mu);font-weight:500;padding:8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--bd);vertical-align:middle}
+input,select,button{font:inherit;color:var(--tx)}
+input,select{padding:8px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--sf);min-width:0}
+button{padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);cursor:pointer}
+button.pri{background:var(--ac);border-color:var(--ac);color:#fff}button.sm{padding:4px 10px;font-size:13px}
+button:focus-visible,input:focus-visible,select:focus-visible,nav a:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.cam{position:relative;aspect-ratio:4/3;background:var(--cam);border-radius:10px;overflow:hidden}
+.cam svg{width:100%;height:100%;fill:#8aa0b2;opacity:.55}.cam g{transition:transform .35s}
+.bb{position:absolute;left:40.5%;top:35.3%;width:19%;height:24%;border:2px solid #fff;border-radius:4px}
+.bb.ok{border-color:#4ade80}.bb.bad{border-color:#f87171}
+.bb span{position:absolute;left:-2px;bottom:100%;padding:1px 6px;font-size:12px;background:#fff;color:#111;white-space:nowrap;border-radius:3px 3px 3px 0}
+.bb.ok span{background:#4ade80}.bb.bad span{background:#f87171}
+.bb b{position:absolute;width:6px;height:6px;margin:-3px;border-radius:50%;background:#facc15}
+.steps{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.steps .chip{background:var(--bg);color:var(--mu)}.steps .done{background:var(--oks);color:var(--ok)}.steps .cur{background:var(--ac);color:#fff}
+.kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:8px 16px;border-radius:8px;display:none;z-index:5}
+.note{color:var(--mu);font-size:13px;margin-top:8px}
+.crop{width:112px;height:112px;flex:none;background:var(--cam);border-radius:8px;overflow:hidden;border:2px solid var(--ok)}.crop svg{width:100%;height:100%;fill:#8aa0b2}
+.cap{max-width:420px;margin:0 0 10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Smart Access<small>Quản lý an ninh ra vào chung cư</small></h1>
+  <div class="row" style="margin:0"><span id="hdrDoor" class="chip">Cửa đóng</span><button class="sm" data-act="theme">Giao diện sáng/tối</button></div>
+</header>
+<nav>
+  <a href="#dash">Tổng quan</a><a href="#res">Cư dân</a><a href="#ver">Xác thực</a><a href="#log">Nhật ký</a>
+</nav>
+<main id="main"></main>
+<p class="note">Bản demo giao diện: dữ liệu mô phỏng, chưa kết nối camera, mô hình AI hay thiết bị thật.</p>
+</div>
+<div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const code=id=>'USR'+String(id).padStart(6,'0');
+const POSE=[['FRONT','Nhìn thẳng','none'],['LEFT','Quay trái','translateX(-10px) rotate(-10deg)'],['RIGHT','Quay phải','translateX(10px) rotate(10deg)'],['UP','Ngẩng lên','translateY(-8px) scale(.96)'],['DOWN','Cúi xuống','translateY(8px)']];
+let U=[{id:1,name:'Nguyễn Văn An',age:34,apt:'A-1203',fr:28,on:true},{id:2,name:'Trần Thị Bình',age:29,apt:'A-1203',fr:26,on:true},{id:3,name:'Lê Minh Châu',age:41,apt:'B-0807',fr:29,on:true},{id:4,name:'Phạm Gia Huy',age:52,apt:'C-0502',fr:24,on:false},{id:5,name:'Võ Thu Hà',age:25,apt:'B-1510',fr:27,on:true}];
+let seq=5,door={left:0},R=null,rs={uid:null,step:0},lf={q:'',d:''};
+const ago=m=>new Date(Date.now()-m*60000);
+let L=[{t:ago(42),name:'Nguyễn Văn An',sim:.91,live:true,dec:'ok',why:'Khuôn mặt hợp lệ'},{t:ago(30),name:'Không xác định',sim:.27,live:true,dec:'bad',why:'Không khớp người đã đăng ký'},{t:ago(18),name:'Lê Minh Châu',sim:.88,live:true,dec:'ok',why:'Khuôn mặt hợp lệ'},{t:ago(9),name:'Trần Thị Bình',sim:.93,live:false,dec:'bad',why:'Phát hiện ảnh hoặc video giả mạo'},{t:ago(3),name:'Phạm Gia Huy',sim:.9,live:true,dec:'bad',why:'Tài khoản bị vô hiệu hóa'}];
+const chip=(d)=>d=='ok'?'<span class="chip ok">Cho phép</span>':'<span class="chip bad">Từ chối</span>';
+const logRows=rows=>rows.length?`<div class="tw"><table><thead><tr><th>Giờ</th><th>Cư dân</th><th>Độ giống</th><th>Chống giả mạo</th><th>Kết quả</th><th>Lý do</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${x.t.toLocaleTimeString('vi-VN')}</td><td>${esc(x.name)}</td><td>${x.sim.toFixed(2)}</td><td><span class="chip ${x.live?'ok':'bad'}">${x.live?'Đạt':'Không đạt'}</span></td><td>${chip(x.dec)}</td><td>${esc(x.why)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="mu">Chưa có lượt xác thực nào khớp bộ lọc.</p>';
+const faceG=p=>`<g style="transform-origin:100px 80px;transform:${p}"><path d="M52 150c0-30 22-46 48-46s48 16 48 46z"/><ellipse cx="73" cy="64" rx="4" ry="7"/><ellipse cx="127" cy="64" rx="4" ry="7"/><circle cx="100" cy="62" r="26"/><path fill="#4b5b69" d="M72 60C70 34 130 34 128 60C120 42 80 42 72 60Z"/><path fill="none" stroke="#1c2832" stroke-width="1.6" stroke-linecap="round" d="M91 61h4M105 61h4M100 64v7M95 79q5 3 10 0"/></g>`;
+const cam=(pose,box)=>`<div class="cam"><svg viewBox="0 0 200 150">${faceG(pose)}</svg>${box}</div>`;
+const crop=()=>`<div class="crop"><svg viewBox="81 53 38 36">${faceG('none')}</svg></div>`;
+const box=(cls,label)=>`<div class="bb ${cls}"><span>${esc(label)}</span>${[[32,25],[68,25],[50,47],[37,72],[63,72]].map(p=>`<b style="left:${p[0]}%;top:${p[1]}%"></b>`).join('')}</div>`;
+const V={
+dash(){const ok=L.filter(x=>x.dec=='ok').length,dev=[['Camera laptop','ok','Hoạt động'],['Backend FastAPI','ok','Hoạt động'],['Mô hình SCRFD và ArcFace','ok','Sẵn sàng'],['MQTT broker','wn','Mô phỏng'],['STM32 và FreeRTOS','wn','Mô phỏng'],['Cảm biến cửa (reed switch)','wn','Mô phỏng']];
+return `<section id="doorBox" class="panel door"><div><div class="mu">Cửa chính, tòa A</div><div id="doorState" class="st"></div><div id="doorTxt" class="mu"></div></div><div><div class="bar"><i id="doorBar"></i></div><button class="sm" data-act="unl">Mở khóa thủ công (demo)</button></div></section>
+<div class="nums"><div><b>${U.filter(u=>u.on).length}</b><span class="mu">cư dân đang hoạt động</span></div><div><b>${L.length}</b><span class="mu">lượt xác thực</span></div><div><b>${ok}</b><span class="mu">được cho phép</span></div><div><b>${L.length-ok}</b><span class="mu">bị từ chối</span></div></div>
+<div class="g2"><div class="panel"><h3>Hoạt động gần đây</h3>${logRows(L.slice(0,5))}</div><div class="panel"><h3>Thiết bị</h3>${dev.map(d=>`<div class="dev"><span>${d[0]}</span><span class="chip ${d[1]}">${d[2]}</span></div>`).join('')}</div></div>`},
+res(){return `<div class="panel"><h3>Thêm cư dân</h3><div class="row"><input id="fn" placeholder="Họ và tên"><input id="fa" type="number" min="1" max="120" placeholder="Tuổi" style="width:90px"><input id="fp" placeholder="Số căn hộ, ví dụ A-1203" style="width:190px"><button class="pri" data-act="add">Thêm cư dân</button></div><div class="mu">Mã người dùng do hệ thống tự sinh.</div></div>
+<div class="panel"><h3>Danh sách cư dân</h3><div class="tw"><table><thead><tr><th>Mã</th><th>Họ và tên</th><th>Tuổi</th><th>Căn hộ</th><th>Khuôn mặt</th><th>Quyền ra vào</th><th></th></tr></thead><tbody>${U.map((u,i)=>`<tr><td>${code(u.id)}</td><td>${esc(u.name)}</td><td>${u.age}</td><td>${esc(u.apt)}</td><td>${u.reg?'<span class="chip ok">Đã đăng ký</span>':'<span class="chip wn">Chưa đăng ký</span>'}</td><td><button class="sm" data-act="tog" data-i="${i}">${u.on?'Đang bật':'Đã tắt'}</button></td><td>${u.reg?'':`<button class="sm pri" data-act="goreg" data-i="${i}">Đăng ký khuôn mặt</button>`}</td></tr>`).join('')}</tbody></table></div></div>`},
+reg(){const c=U.filter(u=>!u.reg);if(!c.length)return '<div class="panel">Tất cả cư dân đã đăng ký khuôn mặt. Hãy thêm cư dân mới ở mục Cư dân.</div>';if(!c.some(u=>u.id==rs.uid))rs={uid:c[0].id,step:0};const p=POSE[Math.min(rs.step,4)];
+return `<div class="g2"><div class="panel">${cam(p[2],box('ok',p[1]))}</div><div class="panel"><h3>Đăng ký 5 tư thế</h3><select id="ru" data-act="ruser">${c.map(u=>`<option value="${u.id}" ${u.id==rs.uid?'selected':''}>${code(u.id)} · ${esc(u.name)}</option>`).join('')}</select><div class="steps">${POSE.map((q,i)=>`<span class="chip ${i<rs.step?'done':i==rs.step?'cur':''}">${q[1]}</span>`).join('')}</div><p>Yêu cầu hiện tại: <b>${p[1]}</b>. Hệ thống đo góc đầu bằng solvePnP trước khi lưu mẫu.</p><button class="pri" data-act="cap">Chụp mẫu ${rs.step+1} trên 5</button></div></div>`},
+ver(){const r=R;return `<div class="g2"><div class="panel">${cam('none',r?box(r.dec,r.u?r.u.name+' · '+r.sim.toFixed(2):'Không xác định'):'')}<div class="row" style="margin-top:12px"><button class="pri" data-act="ver" data-i="known">Cư dân đã đăng ký</button><button data-act="ver" data-i="stranger">Người lạ</button><button data-act="ver" data-i="spoof">Ảnh giả mạo</button><button data-act="ver" data-i="off">Tài khoản bị tắt</button></div></div>
+<div class="panel"><h3>Kết quả xác thực</h3>${r?`<div style="margin-bottom:8px">${chip(r.dec)}</div><div class="kv"><span>Người dùng</span><b>${r.u?esc(r.u.name):'Không xác định'}</b></div><div class="kv"><span>Độ giống khuôn mặt</span><b>${r.sim.toFixed(2)}</b></div><div class="kv"><span>Chống giả mạo</span><b>${r.live?'Đạt':'Không đạt'}</b></div><div class="kv"><span>Lý do</span><b>${esc(r.why)}</b></div>`:'<p class="mu">Chọn một tình huống ở bên trái để mô phỏng một lượt xác thực.</p>'}<p class="note">Cho phép khi độ giống từ 0,50, vượt chống giả mạo và quyền ra vào đang bật.</p></div></div>`},
+log(){return `<div class="panel"><div class="row"><input id="lq" placeholder="Tìm theo tên" value="${esc(lf.q)}"><select id="ld"><option value="">Tất cả kết quả</option><option value="ok">Cho phép</option><option value="bad">Từ chối</option></select></div><div id="lt">${logRows(filt())}</div></div>`}};
+const filt=()=>L.filter(x=>(!lf.d||x.dec==lf.d)&&x.name.toLowerCase().includes(lf.q.toLowerCase()));
+function upd(){const o=door.left>0,h=$('#hdrDoor');h.className='chip '+(o?'ok':'');h.textContent=o?'Cửa mở · '+door.left+' giây':'Cửa đóng';const s=$('#doorState');if(s){$('#doorBox').className='panel door'+(o?' open':'');s.textContent=o?'Đang mở':'Đã khóa';$('#doorBar').style.width=door.left*10+'%';$('#doorTxt').textContent=o?'Tự động khóa sau '+door.left+' giây':'Relay ngắt, khóa điện 12 V đang đóng'}}
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t.h);t.h=setTimeout(()=>t.style.display='none',2200)}
+function render(){const v=location.hash.slice(1);const k=V[v]?v:'dash';document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.hash=='#'+k));$('#main').innerHTML=V[k]();if(k=='log')$('#ld').value=lf.d;upd()}
+const A={
+theme(){const d=document.documentElement,dk=d.dataset.theme?d.dataset.theme=='dark':matchMedia('(prefers-color-scheme:dark)').matches;d.dataset.theme=dk?'light':'dark'},
+add(){const n=$('#fn').value.trim(),a=+$('#fa').value,p=$('#fp').value.trim();if(!n||!a||!p){toast('Hãy nhập đủ họ tên, tuổi và số căn hộ');return}U.push({id:++seq,name:n,age:a,apt:p,reg:false,on:true});toast('Đã thêm '+code(seq));render()},
+tog(i){U[i].on=!U[i].on;render()},
+goreg(i){rs={uid:U[i].id,step:0};location.hash='reg'},
+ruser(){rs={uid:+$('#ru').value,step:0};render()},
+cap(){rs.step++;if(rs.step>=5){const u=U.find(x=>x.id==rs.uid);u.reg=true;toast('Đã lưu 5 mẫu cho '+u.name);rs={uid:null,step:0}}render()},
+unl(){door.left=10;upd()},
+ver(k){const ok=U.filter(u=>u.reg),on=ok.filter(u=>u.on);let u=null,sim,live=true,dec='ok',why='Khuôn mặt hợp lệ, vượt qua chống giả mạo';
+if(k=='stranger'){sim=.2+Math.random()*.22}else if(k=='off'){u=ok.find(x=>!x.on)||ok[0];sim=.9}else{u=on[Math.random()*on.length|0];sim=.8+Math.random()*.15;if(k=='spoof')live=false}
+if(!live){dec='bad';why='Phát hiện ảnh hoặc video giả mạo'}else if(k=='stranger'||!u){dec='bad';why='Không khớp người đã đăng ký';u=null}else if(!u.on){dec='bad';why='Tài khoản bị vô hiệu hóa'}
+R={u,sim,live,dec,why};L.unshift({t:new Date(),name:u?u.name:'Không xác định',sim,live,dec,why});if(dec=='ok')door.left=10;render()}};
+delete V.reg;
+V.res=()=>`<div class="panel"><h3>Thêm cư dân và đăng ký khuôn mặt</h3><div class="row"><input id="fn" placeholder="Họ và tên"><input id="fa" type="number" min="1" max="120" placeholder="Tuổi" style="width:90px"><input id="fp" placeholder="Căn hộ, ví dụ A-1203" style="width:170px"></div><div class="cap">${cam('none',box('ok','Sẵn sàng'))}</div><div class="bar"><i id="rbar"></i></div><div id="rtxt" class="mu">Nhìn vào camera và xoay nhẹ đầu. Hệ thống quay 3 giây để lấy nhiều khung hình nhất. Cư dân chỉ được lưu sau khi quay xong.</div><div class="row" style="margin-top:10px"><button id="rbtn" class="pri" data-act="rec">Quay 3 giây và lưu cư dân</button></div></div>
+<div class="panel"><h3>Danh sách cư dân</h3><div class="tw"><table><thead><tr><th>Mã</th><th>Họ và tên</th><th>Tuổi</th><th>Căn hộ</th><th>Mẫu khuôn mặt</th><th>Quyền ra vào</th></tr></thead><tbody>${U.map((u,i)=>`<tr><td>${code(u.id)}</td><td>${esc(u.name)}</td><td>${u.age}</td><td>${esc(u.apt)}</td><td>${u.fr} khung hình</td><td><span class="chip ${u.on?'ok':'wn'}">${u.on?'Hoạt động':'Không hoạt động'}</span> <button class="sm" data-act="tog" data-i="${i}">${u.on?'Tắt':'Bật'}</button></td></tr>`).join('')}</tbody></table></div></div>`;
+V.ver=()=>{const r=R;return `<div class="g2"><div class="panel">${cam('none',r?box(r.dec,r.u?r.u.name+' · '+r.sim.toFixed(2):'Không xác định'):box('ok','Đang dò mặt'))}<div class="row" style="margin-top:12px"><button class="pri" data-act="ver" data-i="known">Cư dân đã đăng ký</button><button data-act="ver" data-i="stranger">Người lạ</button><button data-act="ver" data-i="spoof">Ảnh giả mạo</button><button data-act="ver" data-i="off">Tài khoản bị tắt</button></div></div><div class="panel"><h3>Vùng cắt đưa vào nhận diện</h3><div class="row" style="align-items:flex-start">${crop()}<p class="mu" style="flex:1;min-width:160px;margin:0">Chỉ cắt vùng mặt, từ lông mày đến cằm, theo 5 điểm landmark. Tóc và tai không lọt vào khung.</p></div><h3 style="margin-top:14px">Kết quả xác thực</h3>${r?`<div style="margin-bottom:8px">${chip(r.dec)}</div><div class="kv"><span>Người dùng</span><b>${r.u?esc(r.u.name):'Không xác định'}</b></div><div class="kv"><span>Độ giống khuôn mặt</span><b>${r.sim.toFixed(2)}</b></div><div class="kv"><span>Chống giả mạo</span><b>${r.live?'Đạt':'Không đạt'}</b></div><div class="kv"><span>Lý do</span><b>${esc(r.why)}</b></div>`:'<p class="mu">Chọn một tình huống ở bên trái để mô phỏng một lượt xác thực.</p>'}<p class="note">Cho phép khi độ giống từ 0,50, vượt chống giả mạo và quyền ra vào đang bật.</p></div></div>`};
+A.rec=()=>{if(rec)return;const n=$('#fn').value.trim(),a=+$('#fa').value,p=$('#fp').value.trim();if(!n||!a||!p){toast('Hãy nhập đủ họ tên, tuổi và số căn hộ trước khi quay');return}
+rec={t:0,got:0,keep:0};$('#rbtn').disabled=true;
+const h=setInterval(()=>{rec.t+=100;rec.got++;if(Math.random()<.86)rec.keep++;const g=$('#main .cam g'),b=$('#rbar');if(g)g.style.transform=`translateX(${(Math.random()*16-8).toFixed(1)}px) rotate(${(Math.random()*16-8).toFixed(1)}deg)`;if(b){b.style.width=rec.t/30+'%';$('#rtxt').textContent='Đang quay: '+rec.got+' khung hình, giữ lại '+rec.keep+' khung đủ chất lượng'}
+if(rec.t>=3000){clearInterval(h);const k=rec.keep;U.push({id:++seq,name:n,age:a,apt:p,fr:k,on:true});toast('Đã đăng ký '+code(seq)+' với '+k+' khung hình');rec=null;render()}},100)};
+A.ver=k=>{const on=U.filter(u=>u.on);let u=null,sim,live=true,dec='ok',why='Khuôn mặt hợp lệ, vượt qua chống giả mạo';
+if(k=='stranger')sim=.2+Math.random()*.22;else if(k=='off'){u=U.find(x=>!x.on)||U[0];sim=.9}else{u=on[Math.random()*on.length|0];sim=.8+Math.random()*.15;if(k=='spoof')live=false}
+if(!live){dec='bad';why='Phát hiện ảnh hoặc video giả mạo'}else if(k=='stranger'||!u){dec='bad';why='Không khớp người đã đăng ký';u=null}else if(!u.on){dec='bad';why='Tài khoản bị vô hiệu hóa'}
+R={u,sim,live,dec,why};L.unshift({t:new Date(),name:u?u.name:'Không xác định',sim,live,dec,why});if(dec=='ok')door.left=10;render()};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b&&b.tagName!='SELECT')A[b.dataset.act](+b.dataset.i||b.dataset.i)});
+document.addEventListener('change',e=>{if(e.target.id=='ru')A.ruser();if(e.target.id=='ld'){lf.d=e.target.value;$('#lt').innerHTML=logRows(filt())}});
+document.addEventListener('input',e=>{if(e.target.id=='lq'){lf.q=e.target.value;$('#lt').innerHTML=logRows(filt())}});
+setInterval(()=>{if(door.left>0){door.left--;upd()}},1000);
+addEventListener('hashchange',render);render();
+</script>
+</body>
+</html>
