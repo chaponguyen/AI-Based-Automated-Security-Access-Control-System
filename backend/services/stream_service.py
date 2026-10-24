@@ -28,7 +28,15 @@ async def generate_mjpeg_stream(request: Request) -> AsyncGenerator[bytes, None]
     stream_quality = int(os.getenv("STREAM_JPEG_QUALITY", "70"))
     frame_interval = 1.0 / stream_fps if stream_fps > 0 else 0.083
 
-    logger.info("Bắt đầu client kết nối stream MJPEG (fps=%.1f, width=%d, quality=%d)", stream_fps, stream_width, stream_quality)
+    # CP-02: Tăng số lượng người xem khi client kết nối
+    camera.change_viewers(+1)
+    logger.info(
+        "Client kết nối stream MJPEG (viewers=%d, fps=%.1f, width=%d, quality=%d)",
+        camera.status().get("viewers", 1),
+        stream_fps,
+        stream_width,
+        stream_quality,
+    )
 
     last_frame_ts = None
 
@@ -91,4 +99,6 @@ async def generate_mjpeg_stream(request: Request) -> AsyncGenerator[bytes, None]
     except Exception as e:
         logger.warning("Ngoại lệ trong vòng lặp stream MJPEG: %s", e)
     finally:
-        logger.info("Client ngắt kết nối stream MJPEG.")
+        # CP-02: Giảm số lượng người xem khi client ngắt kết nối
+        camera.change_viewers(-1)
+        logger.info("Client ngắt kết nối stream MJPEG (viewers=%d).", camera.status().get("viewers", 0))
