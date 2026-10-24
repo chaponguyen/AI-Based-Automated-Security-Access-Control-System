@@ -14,6 +14,16 @@ class FrameSource(ABC):
     """Lớp trừu tượng cho nguồn cung cấp khung hình camera."""
 
     @abstractmethod
+    def start(self) -> None:
+        """Khởi động luồng nền thu thập khung hình."""
+        pass
+
+    @abstractmethod
+    def stop(self) -> None:
+        """Dừng luồng nền và giải phóng tài nguyên."""
+        pass
+
+    @abstractmethod
     def latest(self) -> Tuple[Optional[float], Optional[np.ndarray]]:
         """Trả về (thời điểm, khung hình BGR mới nhất)."""
         pass
@@ -35,7 +45,7 @@ class FrameSource(ABC):
 
 
 class LocalCamera(FrameSource):
-    """Nguồn camera cục bộ (webcam) dùng OpenCV cv2.VideoCapture."""
+    """Nguồn camera cục bộ (webcam) chạy luồng nền và tự kết nối lại."""
 
     def __init__(
         self,
@@ -61,53 +71,137 @@ class LocalCamera(FrameSource):
         self._latest_time: Optional[float] = None
         self._lock = threading.Lock()
 
+        # Luồng nền và tự mở lại (CP-02)
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+        self._fps_count: int = 0
+        self._fps_start_time: float = time.time()
+
     def open(self) -> bool:
         """Mở kết nối camera với DirectShow trên Windows."""
         try:
-            # Trên Windows dùng CAP_DSHOW giúp mở nhanh hơn
-            self._cap = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
-            if not self._cap.isOpened():
-                # Fallback nếu DirectShow không mở được
-                self._cap = cv2.VideoCapture(self.index)
+            if self._cap is not None:
+                try:
+                    self._cap.release()
+                except Exception:
+                    pass
+                self._cap = None
 
-            if self._cap.isOpened():
-                self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-                # Đọc kích thước thực tế
-                actual_w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                actual_h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                if actual_w > 0 and actual_h > 0:
-                    self.width = actual_w
-                    self.height = actual_h
-                self._running = True
+            # Trên Windows dùng CAP_DSHOW giúp mở nhanh hơn
+            cap = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
+            if not cap.isOpened():
+                # Fallback nếu DirectShow không mở được
+                cap = cv2.VideoCapture(self.index)
+
+            if cap.isOpened():
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                with self._lock:
+                    self._cap = cap
+                    if actual_w > 0 and actual_h > 0:
+                        self.width = actual_w
+                        self.height = actual_h
+                    self._running = True
                 logger.info("LocalCamera[%d] đã mở thành công (%dx%d)", self.index, self.width, self.height)
                 return True
             else:
-                self._running = False
+                with self._lock:
+                    self._cap = None
+                    self._running = False
                 logger.warning("Không thể mở LocalCamera[%d]", self.index)
                 return False
         except Exception as e:
-            self._running = False
+            with self._lock:
+                self._cap = None
+                self._running = False
             logger.error("Lỗi khi mở LocalCamera[%d]: %s", self.index, e)
             return False
 
     def is_opened(self) -> bool:
-        return self._cap is not None and self._cap.isOpened()
+        with self._lock:
+            return self._cap is not None and self._cap.isOpened()
 
     def read(self) -> Tuple[bool, Optional[np.ndarray]]:
         """Đọc 1 khung hình trực tiếp từ camera."""
-        if self._cap is None or not self._cap.isOpened():
+        with self._lock:
+            cap = self._cap
+        if cap is None or not cap.isOpened():
             return False, None
-        ret, frame = self._cap.read()
-        if ret and frame is not None:
-            now = time.time()
-            with self._lock:
-                self._latest_frame = frame
-                self._latest_time = now
-            return True, frame
+        try:
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                return True, frame
+        except Exception as e:
+            logger.warning("Lỗi ngoại lệ khi read() camera: %s", e)
         return False, None
 
-    def release(self):
+    def start(self) -> None:
+        """Khởi động luồng nền thu thập khung hình."""
+        if self._thread is not None and self._thread.is_alive():
+            logger.info("LocalCamera[%d] luồng nền đã đang chạy", self.index)
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._worker, name="CameraWorkerThread", daemon=True)
+        self._thread.start()
+        logger.info("LocalCamera[%d] đã khởi động luồng nền daemon", self.index)
+
+    def stop(self) -> None:
+        """Dừng luồng nền và giải phóng camera sạch sẽ."""
+        self._stop_event.set()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        self.release()
+        logger.info("LocalCamera[%d] đã dừng luồng nền và giải phóng", self.index)
+
+    def _worker(self) -> None:
+        """Vòng lặp luồng nền đọc khung hình liên tục và tự mở lại khi mất tín hiệu."""
+        retry_delay = 1.0
+        while not self._stop_event.is_set():
+            if not self.is_opened():
+                logger.info("LocalCamera[%d] chưa mở hoặc bị ngắt, thử mở lại...", self.index)
+                if self.open():
+                    retry_delay = 1.0
+                    self._fps_count = 0
+                    self._fps_start_time = time.time()
+                else:
+                    with self._lock:
+                        self._running = False
+                        self._actual_fps = 0.0
+                    # Chờ 1 giây tăng dần tới tối đa 10 giây
+                    self._stop_event.wait(timeout=retry_delay)
+                    retry_delay = min(retry_delay * 1.5, 10.0)
+                    continue
+
+            # Đọc khung hình
+            ret, frame = self.read()
+            if ret and frame is not None:
+                now = time.time()
+                with self._lock:
+                    self._latest_frame = frame
+                    self._latest_time = now
+                    self._running = True
+
+                self._fps_count += 1
+                elapsed = now - self._fps_start_time
+                if elapsed >= 1.0:
+                    with self._lock:
+                        self._actual_fps = self._fps_count / elapsed
+                    self._fps_count = 0
+                    self._fps_start_time = now
+                retry_delay = 1.0
+            else:
+                logger.warning("LocalCamera[%d] đọc khung hình thất bại, giải phóng và chờ mở lại...", self.index)
+                self.release()
+                with self._lock:
+                    self._running = False
+                    self._actual_fps = 0.0
+                self._stop_event.wait(timeout=retry_delay)
+                retry_delay = min(retry_delay * 1.5, 10.0)
+
+    def release(self) -> None:
         """Giải phóng camera."""
         with self._lock:
             if self._cap is not None:
@@ -117,6 +211,7 @@ class LocalCamera(FrameSource):
                     logger.warning("Lỗi giải phóng camera: %s", e)
                 self._cap = None
             self._running = False
+            self._actual_fps = 0.0
         logger.info("LocalCamera[%d] đã được giải phóng", self.index)
 
     def latest(self) -> Tuple[Optional[float], Optional[np.ndarray]]:
@@ -143,10 +238,24 @@ class LocalCamera(FrameSource):
                 "viewers": self._viewers,
             }
 
-    def set_viewers(self, count: int):
+    def set_viewers(self, count: int) -> None:
         with self._lock:
             self._viewers = max(0, count)
 
-    def change_viewers(self, delta: int):
+    def change_viewers(self, delta: int) -> None:
         with self._lock:
             self._viewers = max(0, self._viewers + delta)
+
+
+# Module-level singleton
+_camera_instance: Optional[LocalCamera] = None
+_camera_lock = threading.Lock()
+
+
+def get_camera() -> LocalCamera:
+    """Lấy hoặc khởi tạo instance LocalCamera duy nhất (Singleton)."""
+    global _camera_instance
+    with _camera_lock:
+        if _camera_instance is None:
+            _camera_instance = LocalCamera()
+        return _camera_instance
