@@ -28,7 +28,8 @@ def auto_lines(path):
     if not os.path.exists(full):
         return "(không tìm thấy file)"
     diff = subprocess.run(["git", "diff", "-U0", "HEAD", "--", path], cwd=ROOT,
-                          capture_output=True, text=True).stdout
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace").stdout
     rs = []
     for m in re.finditer(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", diff, re.M):
         start, cnt = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
@@ -40,6 +41,8 @@ def auto_lines(path):
     return merge(rs)
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):  # Windows cp1252 không in được tiếng Việt
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("task"); ap.add_argument("cp", nargs="?")
     ap.add_argument("--file", action="append", default=[])
