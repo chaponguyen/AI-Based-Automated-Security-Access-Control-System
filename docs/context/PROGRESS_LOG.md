@@ -16,3 +16,4 @@
 - 2026-10-24 22:28 [B1] CP-02 (backend/database/models.py): Bảng users: status String(10) (default/server_default active), created_at DateTime, CheckConstraint ck_users_status, property user_code
 - 2026-10-24 22:30 [B1] CP-03 (backend/database/models.py): Bảng face_embeddings: id (PK autoincrement), user_id Integer (FK users.id ondelete CASCADE index), embedding ARRAY(Float) NOT NULL
 - 2026-10-24 22:31 [B1] CP-04 (backend/database/models.py): Bảng face_embeddings: quality Float nullable, model_version String(30), created_at DateTime; relationship User.embeddings (cascade all, delete-orphan, passive_deletes=True)
+- 2026-10-24 22:33 [B1] CP-05 (backend/database/models.py; docs/context/DB_SCHEMA.md): Bảng access_logs: id, user_id (FK users.id nullable ondelete SET NULL), similarity, liveness, decision (CheckConstraint ck_access_logs_decision), reason, timestamp (index)

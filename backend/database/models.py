@@ -4,6 +4,7 @@ from sqlalchemy import (
     Integer,
     String,
     Float,
+    Boolean,
     DateTime,
     CheckConstraint,
     ForeignKey,
@@ -61,3 +62,22 @@ class FaceEmbedding(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     user = relationship("User", back_populates="embeddings")
+
+
+class AccessLog(Base):
+    """Bảng ghi nhật ký truy cập ra vào (CP-05)."""
+    __tablename__ = "access_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # NULL: người lạ
+    similarity = Column(Float, nullable=True)
+    liveness = Column(Boolean, nullable=True)
+    decision = Column(String(10), nullable=False)  # granted | denied
+    reason = Column(String(80), nullable=True)
+    timestamp = Column(DateTime, server_default=func.now(), index=True)
+
+    __table_args__ = (
+        CheckConstraint("decision in ('granted','denied')", name="ck_access_logs_decision"),
+    )
+
+    user = relationship("User")
