@@ -26,10 +26,13 @@ COMMON = ["docs/reports", "docs/context"]
 
 
 def git(*args):
-    return subprocess.run(["git", *args], cwd=ROOT, text=True, capture_output=True)
+    return subprocess.run(["git", *args], cwd=ROOT, text=True, capture_output=True,
+                          encoding="utf-8", errors="replace")
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if len(sys.argv) != 3 or sys.argv[1] not in ALLOWED:
         sys.exit('Cách dùng: python scripts/agent_commit.py <A1..A6> "<commit message>"')
     agent, msg = sys.argv[1], sys.argv[2]
