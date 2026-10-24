@@ -7,3 +7,4 @@
 - 2026-10-24 20:58 [B11] CP-04 (backend/api/camera.py; backend/main.py): Tao endpoint GET /api/camera/status (CameraStatusResponse) va dang ky router vao main.py
 - 2026-10-24 21:01 [B11] CP-05 (backend/.env.example; backend/services/camera_service.py): Chu thich .env.example, load_dotenv, _parse_int_env va _parse_str_env kiem tra kieu, ho tro local index va URL stream
 - 2026-10-24 21:09 [B11] CP-06 (backend/main.py): Trien khai lifespan (khoi dong camera, nap an toan model AI, giai phong khi tat), CORS 5173, GET /api/health dong
+- 2026-10-24 21:15 [B13] CP-01 (backend/services/stream_service.py; backend/api/stream.py; backend/main.py): Async generator generate_mjpeg_stream, endpoint GET /api/stream (MJPEG) va GET /api/stream/snapshot, dang ky main.py

@@ -91,8 +91,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api import residents, verify, logs, ws, camera
-for r in (residents.router, verify.router, logs.router, ws.router, camera.router):
+from api import residents, verify, logs, ws, camera, stream
+for r in (residents.router, verify.router, logs.router, ws.router, camera.router, stream.router):
     app.include_router(r)
 
 
