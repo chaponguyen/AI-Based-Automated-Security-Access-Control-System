@@ -7,7 +7,9 @@ import os
 import cv2
 import numpy as np
 
-from .config import ANTI_SPOOF_MODEL, ANTI_SPOOF_SCALE, ANTI_SPOOF_SIZE, LIVENESS_MIN
+from .config import (ANTI_SPOOF_MODEL, ANTI_SPOOF_SCALE, ANTI_SPOOF_SIZE,
+                     LIVENESS_MIN, LIVENESS_SEQ_MAX_FRAMES,
+                     LIVENESS_SEQ_MIN_FRAMES, LIVENESS_SEQ_MOTION_MIN)
 
 logger = logging.getLogger(__name__)
 
@@ -154,3 +156,87 @@ def check_liveness(image_bgr, bbox):
         logger.warning("Bbox khong hop le cho kiem tra song: %r (%s)", bbox, exc)
         return False, 0.0
     return bool(score >= LIVENESS_MIN), float(score)
+
+
+def _gray_crop(image_bgr, bbox):
+    """Vùng cắt chống giả mạo -> ảnh xám 80x80 float32 đã làm mượt nhẹ."""
+    crop = crop_anti_spoof(image_bgr, bbox)
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    return cv2.GaussianBlur(gray, (3, 3), 0).astype(np.float32)
+
+
+def check_liveness_sequence(frames, boxes):
+    """Kiểm tra sống theo thời gian trên 6–15 khung của CÙNG một khuôn mặt.
+
+    `frames` là danh sách ảnh BGR đầy đủ, `boxes` là bbox tương ứng từng khung
+    (A2 đã theo dõi mặt bằng IoU). Trả về (is_real, score, detail):
+    - score: trung vị xác suất lớp "thật" qua các khung.
+    - detail: số khung dùng được, điểm từng khung, trung vị/min/độ lệch, năng lượng
+      chuyển động, ngưỡng đã dùng và chế độ chạy.
+
+    Điều kiện đạt: trung vị >= LIVENESS_MIN VÀ năng lượng chuyển động
+    >= LIVENESS_SEQ_MOTION_MIN. Ảnh tĩnh chụp lại (hoặc replay đứng yên) giữ nguyên
+    từng pixel nên chuyển động gần 0 dù điểm model rất cao.
+
+    Chuỗi ngắn hơn LIVENESS_SEQ_MIN_FRAMES thì quay về kiểm tra một khung cuối,
+    để A2 không phải xử lý riêng trường hợp mới thấy mặt.
+    """
+    detail = {"mode": "sequence", "frames": 0, "scores": [], "median": 0.0,
+              "minimum": 0.0, "std": 0.0, "motion": 0.0,
+              "liveness_min": float(LIVENESS_MIN),
+              "motion_min": float(LIVENESS_SEQ_MOTION_MIN)}
+
+    if frames is None or boxes is None:
+        detail["mode"] = "invalid"
+        detail["reason"] = "thieu frames hoac boxes"
+        return False, 0.0, detail
+    frames = list(frames)
+    boxes = list(boxes)
+    if len(frames) != len(boxes):
+        detail["mode"] = "invalid"
+        detail["reason"] = f"so khung {len(frames)} khac so bbox {len(boxes)}"
+        logger.warning("check_liveness_sequence: %s", detail["reason"])
+        return False, 0.0, detail
+    if not frames:
+        detail["mode"] = "invalid"
+        detail["reason"] = "chuoi rong"
+        return False, 0.0, detail
+
+    # Chỉ giữ các khung mới nhất nếu A2 giữ lịch sử dài.
+    frames = frames[-LIVENESS_SEQ_MAX_FRAMES:]
+    boxes = boxes[-LIVENESS_SEQ_MAX_FRAMES:]
+
+    scores, grays = [], []
+    for frame, box in zip(frames, boxes):
+        try:
+            scores.append(liveness_score(frame, box))
+            grays.append(_gray_crop(frame, box))
+        except (TypeError, ValueError) as exc:
+            logger.warning("Bo qua khung loi trong chuoi kiem tra song: %r (%s)", box, exc)
+
+    if not scores:
+        detail["mode"] = "invalid"
+        detail["reason"] = "khong co khung hop le"
+        return False, 0.0, detail
+
+    if len(scores) < LIVENESS_SEQ_MIN_FRAMES:
+        is_real, score = check_liveness(frames[-1], boxes[-1])
+        detail.update({"mode": "single_frame", "frames": len(scores),
+                       "scores": [round(s, 6) for s in scores]})
+        return is_real, score, detail
+
+    diffs = [float(np.mean(np.abs(grays[i] - grays[i - 1])))
+             for i in range(1, len(grays))]
+    motion = float(np.mean(diffs))
+    median = float(np.median(scores))
+    detail.update({
+        "frames": len(scores),
+        "scores": [round(s, 6) for s in scores],
+        "median": median,
+        "minimum": float(np.min(scores)),
+        "std": float(np.std(scores)),
+        "motion": motion,
+    })
+
+    is_real = bool(median >= LIVENESS_MIN and motion >= LIVENESS_SEQ_MOTION_MIN)
+    return is_real, median, detail

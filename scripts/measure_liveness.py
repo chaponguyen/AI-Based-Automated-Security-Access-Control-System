@@ -1,10 +1,13 @@
-"""Đo APCER/BPCER cho B4 CP-05 (chống giả mạo, MiniFASNetV2).
+"""Đo APCER/BPCER cho B4 (chống giả mạo, MiniFASNetV2).
 
 Chạy:
     python scripts/measure_liveness.py
     python scripts/measure_liveness.py --real-dir test_data/real_webcam --spoof-dir test_data/spoof
+    python scripts/measure_liveness.py --clips
 
 Ghi docs/reports/B4_liveness.csv (điểm từng ảnh) và in bảng APCER/BPCER theo ngưỡng 0,40..0,80.
+Chế độ --clips: quét video ngắn trong test_data/ (live_video, spoof_photo, spoof_video),
+theo dõi một mặt qua các khung rồi gọi check_liveness_sequence; ghi docs/reports/B4_clips.csv.
 """
 import argparse
 import csv
@@ -18,11 +21,15 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
-from ai.anti_spoof import liveness_score  # noqa: E402
+from ai.anti_spoof import check_liveness_sequence, liveness_score  # noqa: E402
+from ai.config import LIVENESS_SEQ_MAX_FRAMES  # noqa: E402
 from ai.detector import detect_faces  # noqa: E402
 
 EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+VEXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 THRESHOLDS = [round(0.40 + 0.05 * i, 2) for i in range(9)]   # 0,40 .. 0,80
+CLIP_FPS = 10          # lấy mẫu ~10 khung/giây, đủ cho chuyển động mà không nặng máy
+CLIP_FOLDERS = ("live_video", "spoof_photo", "spoof_video")
 
 
 def list_images(folder):
@@ -69,14 +76,136 @@ def rates(rows, threshold):
     return apcer, bpcer, spoof_accepted, len(spoof), real_rejected, len(real)
 
 
+def _iou(a, b):
+    ax1, ay1, ax2, ay2 = (float(v) for v in a)
+    bx1, by1, bx2, by2 = (float(v) for v in b)
+    ix = max(0.0, min(ax2, bx2) - max(ax1, bx1))
+    iy = max(0.0, min(ay2, by2) - max(ay1, by1))
+    inter = ix * iy
+    union = (ax2 - ax1) * (ay2 - ay1) + (bx2 - bx1) * (by2 - by1) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def track_clip(path, fps_target=CLIP_FPS):
+    """Đọc clip, lấy mẫu ~fps_target khung/giây, theo dõi MỘT mặt bằng IoU.
+
+    Trả (frames, boxes, fps_goc, so_khung_doc). Khung không thấy mặt thì bỏ,
+    khung sau nối với bbox gần nhất trước đó.
+    """
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        raise IOError(f"khong mo duoc clip: {path}")
+    src_fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+    step = max(1, int(round(src_fps / fps_target))) if src_fps > 0 else 1
+
+    frames, boxes, last_box, read = [], [], None, 0
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        if read % step:
+            read += 1
+            continue
+        read += 1
+        faces = detect_faces(frame)
+        if not faces:
+            continue
+        if last_box is None:
+            face = max(faces, key=lambda f: (f["bbox"][2] - f["bbox"][0]) *
+                       (f["bbox"][3] - f["bbox"][1]))
+        else:
+            face = max(faces, key=lambda f: _iou(last_box, f["bbox"]))
+            if _iou(last_box, face["bbox"]) < 0.3:
+                continue
+        last_box = face["bbox"]
+        frames.append(frame)
+        boxes.append(last_box)
+        if len(frames) > 2 * LIVENESS_SEQ_MAX_FRAMES:   # chỉ giữ lịch sử gần nhất
+            frames.pop(0)
+            boxes.pop(0)
+    cap.release()
+    return frames, boxes, src_fps, read
+
+
+def measure_clips(folders):
+    """Chạy check_liveness_sequence trên từng clip trong các thư mục."""
+    rows = []
+    for folder in folders:
+        if not os.path.isdir(folder):
+            print(f"  (bo qua, khong thay thu muc) {folder}")
+            continue
+        for name in sorted(os.listdir(folder)):
+            path = os.path.join(folder, name)
+            if not os.path.isfile(path) or os.path.splitext(name)[1].lower() not in VEXTS:
+                continue
+            nhom = os.path.basename(folder)
+            try:
+                frames, boxes, src_fps, read = track_clip(path)
+            except IOError as exc:
+                print(f"  LOI {name}: {exc}")
+                continue
+            if not frames:
+                rows.append({"nhom": nhom, "clip": name, "fps": src_fps, "frames": 0,
+                             "score": None, "motion": None, "std": None,
+                             "is_real": False, "mode": "no_face"})
+                continue
+            is_real, score, detail = check_liveness_sequence(frames, boxes)
+            rows.append({"nhom": nhom, "clip": name, "fps": src_fps,
+                         "frames": detail.get("frames", len(frames)),
+                         "score": score, "motion": detail.get("motion"),
+                         "std": detail.get("std"), "is_real": is_real,
+                         "mode": detail.get("mode", "?")})
+    return rows
+
+
+def print_clips(rows):
+    print("\nKiem tra song theo thoi gian tren clip:")
+    print("| Nhom | Clip | fps | So khung | Diem (trung vi) | Chuyen dong | Do lech | Ket luan |")
+    print("|---|---|---:|---:|---:|---:|---:|---|")
+    for r in rows:
+        score = "-" if r["score"] is None else f"{r['score']:.4f}"
+        motion = "-" if r["motion"] is None else f"{r['motion']:.3f}"
+        std = "-" if r["std"] is None else f"{r['std']:.5f}"
+        ket = "that" if r["is_real"] else "chan"
+        print(f"| {r['nhom']} | {r['clip']} | {r['fps']:.0f} | {r['frames']} | "
+              f"{score} | {motion} | {std} | {ket} ({r['mode']}) |")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Do APCER/BPCER cho chong gia mao (B4 CP-05)")
+    parser = argparse.ArgumentParser(description="Do APCER/BPCER cho chong gia mao (B4)")
     parser.add_argument("--real-dir", default=os.path.join(ROOT, "test_data", "real_webcam"))
     parser.add_argument("--spoof-dir", default=os.path.join(ROOT, "test_data", "spoof"))
     parser.add_argument("--extra-real-dir", default=os.path.join(ROOT, "test_data"),
                         help="nhom that tham khao them (mac dinh 10 selfie), de trong de bo qua")
     parser.add_argument("--out", default=os.path.join(ROOT, "docs", "reports", "B4_liveness.csv"))
+    parser.add_argument("--clips", action="store_true",
+                        help="che do clip: do liveness theo thoi gian tren video ngan")
+    parser.add_argument("--clip-root", default=os.path.join(ROOT, "test_data"),
+                        help="thu muc goc chua live_video/, spoof_photo/, spoof_video/")
     args = parser.parse_args()
+
+    if args.clips:
+        root = args.clip_root if os.path.isabs(args.clip_root) else os.path.join(ROOT, args.clip_root)
+        folders = [os.path.join(root, name) for name in CLIP_FOLDERS]
+        rows = measure_clips(folders)
+        if not rows:
+            print("Khong co clip nao. Dat clip vao:",
+                  ", ".join(os.path.join(root, n) for n in CLIP_FOLDERS))
+            return
+        out_path = os.path.join(ROOT, "docs", "reports", "B4_clips.csv")
+        with open(out_path, "w", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["nhom", "clip", "fps", "so_khung", "score", "chuyen_dong",
+                             "do_lech", "is_real", "mode"])
+            for r in rows:
+                writer.writerow([r["nhom"], r["clip"], f"{r['fps']:.0f}", r["frames"],
+                                 "" if r["score"] is None else f"{r['score']:.6f}",
+                                 "" if r["motion"] is None else f"{r['motion']:.4f}",
+                                 "" if r["std"] is None else f"{r['std']:.6f}",
+                                 int(bool(r["is_real"])), r["mode"]])
+        print("Da ghi:", out_path)
+        print_clips(rows)
+        return
 
     real_dir = args.real_dir if os.path.isabs(args.real_dir) else os.path.join(ROOT, args.real_dir)
     spoof_dir = args.spoof_dir if os.path.isabs(args.spoof_dir) else os.path.join(ROOT, args.spoof_dir)
