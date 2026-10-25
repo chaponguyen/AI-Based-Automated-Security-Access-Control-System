@@ -4,6 +4,7 @@ import { useState } from 'react'
 import LiveStream from '../components/LiveStream.jsx'
 import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
 import FaceBox from '../components/FaceBox.jsx'
+import DoorStatus from '../components/DoorStatus.jsx'
 import { mockEventsEnabled } from '../services/mock.js'
 import { getReasonLabel } from '../services/reasons.js'
 
@@ -12,7 +13,7 @@ function getResidentName(result) {
 }
 
 export default function Verify() {
-  const { connected, lastResult, cameraStatus } = useDashboardSocket()
+  const { connected, lastResult, cameraStatus, doorState } = useDashboardSocket()
   const [mockCount, setMockCount] = useState(0)
   const granted = lastResult?.decision === 'granted'
 
@@ -103,6 +104,7 @@ export default function Verify() {
           )}
         </section>
       </div>
+      <DoorStatus doorState={doorState} />
     </main>
   )
 }
