@@ -26,3 +26,4 @@
 - 2026-10-25 09:00 [B6] CP-01 (backend/services/decision.py): Implement ham thuan decide(similarity, liveness, user, threshold=0.5) tra (decision, reason) theo thu tu kiem tra liveness, user/threshold, status
 - 2026-10-25 09:02 [B14] CP-02 (backend/services/speaker_text.py): Implement ham so_sang_chu(n) doi so nguyen 0 den 999 sang chu tieng Viet theo chuan ngu phap (nam/lam, mot/muoi mot/hai muoi mot, linh)
 - 2026-10-25 09:06 [B8] CP-01 (frontend/src/hooks/useDashboardSocket.js; frontend/src/services/api.js): Hoàn thiện useDashboardSocket: nhận camera_status, access_result, ai_status, record_progress; tự nối lại tăng dần tối đa 10 giây và poll trạng thái camera mỗi 2 giây khi WS ngắt. Dùng VITE_API_URL cho REST và WebSocket.
+- 2026-10-25 09:24 [B8] CP-02 (frontend/src/components/LiveStream.jsx): Hoàn thiện LiveStream: stream mặc định tắt, chỉ gắn ảnh MJPEG khi bật, đóng nguồn khi tắt hoặc unmount, hiển thị camera chưa sẵn sàng và lỗi tải có nút thử lại thủ công.
