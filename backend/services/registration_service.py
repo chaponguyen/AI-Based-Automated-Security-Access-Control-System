@@ -26,19 +26,13 @@ class NotEnoughQualityFramesError(Exception):
 
 
 def reload_gallery_cache(db=None):
-    """Nạp lại bộ nhớ cache gallery sau khi có cư dân mới.
-
-    TODO(B6): GalleryCache do Agent A2 phụ trách triển khai ở B6.
-    Hiện tại B6 chưa hoàn tất nên kiểm tra và bỏ qua an toàn, ghi nhận log TODO.
-    """
+    """Nạp lại bộ nhớ cache gallery sau khi có cư dân mới (B6 CP-02)."""
     try:
         from services import gallery_cache
-        if hasattr(gallery_cache, "reload"):
-            gallery_cache.reload(db)
-        elif hasattr(gallery_cache, "init_cache"):
-            gallery_cache.init_cache(db)
+        gallery_cache.reload(db)
     except Exception as err:
-        logger.debug("GalleryCache chưa sẵn sàng (B6), bỏ qua nạp cache: %s", err)
+        logger.error("Lỗi khi nạp lại GalleryCache: %s", err)
+
 
 
 
