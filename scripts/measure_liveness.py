@@ -177,6 +177,11 @@ SLIDE_LENGTHS = (10, 15)       # số khung mỗi cửa sổ
 FRACTION_YS = (0.70, 0.80, 0.90)   # tỷ lệ khung đạt trong cửa sổ
 STD_XS = (0.02, 0.05, 0.10, 0.15, 0.20, 0.30)
 
+# Luật đã chốt ngày 2026-10-25 từ tập hiệu chỉnh (1 clip thật + 1 clip giả).
+# Kiểm định trên clip MỚI, KHÔNG chỉnh các số này.
+HOLDOUT_RULE = {"length": 15, "frac_min": 0.87, "std_max": 0.11}
+HOLDOUT_FOLDERS = ("live_video_val", "spoof_video_val", "spoof_photo_val")
+
 
 def read_scores(path, fps_target=SLIDE_FPS):
     """Đọc TOÀN BỘ clip trên lưới thời gian fps_target (10 khung/giây).
@@ -371,6 +376,93 @@ def sliding_report(root):
     print("\nDa ghi:", out_path)
 
 
+def _rule_test(w, rule=None):
+    rule = rule or HOLDOUT_RULE
+    return w["frac"] >= rule["frac_min"] and w["std"] <= rule["std_max"]
+
+
+def holdout_report(root):
+    """Chạy ĐÚNG luật đã chốt trên tập kiểm định, không chỉnh tham số."""
+    length = HOLDOUT_RULE["length"]
+    print("Luat kiem dinh (da chot, KHONG chinh): L=%d khung (~%.1f giay), "
+          "ty le khung >= %.2f phai dat >= %.0f%%, do lech chuan <= %.2f"
+          % (length, length / SLIDE_FPS, LIVENESS_MIN,
+             100 * HOLDOUT_RULE["frac_min"], HOLDOUT_RULE["std_max"]))
+
+    rows, summary = [], []
+    for folder_name in HOLDOUT_FOLDERS:
+        folder = os.path.join(root, folder_name)
+        if not os.path.isdir(folder):
+            print(f"  (bo qua, khong thay thu muc) {folder}")
+            continue
+        nhom = "that" if folder_name.startswith("live") else "gia"
+        for clip in sorted(os.listdir(folder)):
+            path = os.path.join(folder, clip)
+            if not os.path.isfile(path) or os.path.splitext(clip)[1].lower() not in VEXTS:
+                continue
+            try:
+                scores, times, cov, src_fps = read_scores(path)
+            except IOError as exc:
+                print(f"  LOI {clip}: {exc}")
+                continue
+            wins = windows_of(scores, times, length)
+            passed = sum(1 for w in wins if _rule_test(w))
+            pct = 100.0 * cov["co_mat"] / cov["mau"] if cov["mau"] else 0.0
+            summary.append({
+                "nhom": nhom, "clip": clip, "fps": src_fps, "mau": cov["mau"],
+                "co_mat": cov["co_mat"], "pct_mat": pct, "cua_so": len(wins),
+                "dat": passed,
+                "frac_min": min((w["frac"] for w in wins), default=None),
+                "frac_max": max((w["frac"] for w in wins), default=None),
+                "std_min": min((w["std"] for w in wins), default=None),
+                "std_max": max((w["std"] for w in wins), default=None),
+                "span_min": min((w["span"] for w in wins), default=None),
+                "span_max": max((w["span"] for w in wins), default=None),
+            })
+            for w in wins:
+                rows.append({"nhom": nhom, "clip": clip, "pass": bool(_rule_test(w)), **w})
+
+    if not summary:
+        print("Khong co clip kiem dinh nao.")
+        return
+
+    print("\n| Nhom | Clip | Mat theo doi | Cua so | Dai cua so (s) | Ty le dat | Do lech | Cua so dat | Ket luan |")
+    print("|---|---|---:|---:|---|---:|---:|---:|---|")
+    for s in summary:
+        if not s["cua_so"]:
+            print(f"| {s['nhom']} | {s['clip']} | {s['co_mat']}/{s['mau']} | 0 | - | - | - | "
+                  "0/0 | khong du cua so (chan o detect) |")
+            continue
+        ket = "cho qua" if s["dat"] else "chan"
+        print("| %s | %s | %d/%d (%.0f%%) | %d | %.2f-%.2f | %.0f-%.0f%% | %.4f-%.4f | %d/%d | %s |"
+              % (s["nhom"], s["clip"], s["co_mat"], s["mau"], s["pct_mat"], s["cua_so"],
+                 s["span_min"], s["span_max"], 100 * s["frac_min"], 100 * s["frac_max"],
+                 s["std_min"], s["std_max"], s["dat"], s["cua_so"], ket))
+
+    for nhom, label in (("that", "THAT"), ("gia", "GIA")):
+        group = [s for s in summary if s["nhom"] == nhom]
+        total = sum(s["cua_so"] for s in group)
+        passed = sum(s["dat"] for s in group)
+        if total:
+            rate = 100.0 * passed / total
+            print(f"\n{label}: {passed}/{total} cua so duoc cho qua ({rate:.1f}%) | "
+                  f"{sum(1 for s in group if s['dat'])}/{len(group)} clip co it nhat 1 cua so dat")
+        else:
+            print(f"\n{label}: khong co cua so nao danh gia duoc ({len(group)} clip)")
+
+    out_path = os.path.join(ROOT, "docs", "reports", "B4_holdout.csv")
+    with open(out_path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["nhom", "clip", "cua_so_bat_dau", "t_bat_dau", "t_ket_thuc",
+                         "do_dai_giay", "trung_vi", "ty_le_dat", "do_lech", "dat_luat"])
+        for r in rows:
+            writer.writerow([r["nhom"], r["clip"], r["start"],
+                             f"{r['t_start']:.3f}", f"{r['t_end']:.3f}", f"{r['span']:.3f}",
+                             f"{r['median']:.6f}", f"{r['frac']:.4f}", f"{r['std']:.6f}",
+                             int(r["pass"])])
+    print("\nDa ghi:", out_path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Do APCER/BPCER cho chong gia mao (B4)")
     parser.add_argument("--real-dir", default=os.path.join(ROOT, "test_data", "real_webcam"))
@@ -382,13 +474,20 @@ def main():
                         help="che do clip: do liveness theo thoi gian tren video ngan")
     parser.add_argument("--sliding", action="store_true",
                         help="che do cua so truot: danh gia luat ung vien tren toan bo khung clip")
+    parser.add_argument("--holdout", action="store_true",
+                        help="chay DUNG luat da chot tren tap kiem dinh (live_video_val, spoof_video_val)")
     parser.add_argument("--clip-root", default=os.path.join(ROOT, "test_data"),
                         help="thu muc goc chua live_video/, spoof_photo/, spoof_video/")
     args = parser.parse_args()
 
+    base = args.clip_root if os.path.isabs(args.clip_root) else os.path.join(ROOT, args.clip_root)
+
+    if args.holdout:
+        holdout_report(base)
+        return
+
     if args.sliding:
-        root = args.clip_root if os.path.isabs(args.clip_root) else os.path.join(ROOT, args.clip_root)
-        sliding_report(root)
+        sliding_report(base)
         return
 
     if args.clips:
