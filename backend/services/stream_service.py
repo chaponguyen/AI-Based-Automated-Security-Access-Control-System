@@ -129,16 +129,65 @@ def get_latest_overlay(max_age_sec: float = 1.5) -> List[Dict[str, Any]]:
     return items
 
 
-def draw_overlay(frame: np.ndarray) -> np.ndarray:
-    """Vẽ khung và nhãn lên bản sao của khung hình stream (CP-03).
+# Snapshot an toàn luồng cho precheck đăng ký (B5 CP-07)
+_precheck_snapshot: Tuple[float, Optional[Dict[str, Any]]] = (0.0, None)
 
-    - Lấy kết quả mới nhất từ vòng lặp B12 qua get_latest_overlay() (hoán đổi nguyên tử).
-    - Kết quả cũ quá 1.5 giây thì ngừng vẽ nhãn để tránh thông tin sai lệch.
+
+def set_latest_precheck(data: Optional[Dict[str, Any]]) -> None:
+    """Lưu kết quả precheck đăng ký mới nhất (an toàn luồng, không lock lâu)."""
+    global _precheck_snapshot
+    _precheck_snapshot = (time.time(), data)
+
+
+def get_latest_precheck(max_age_sec: float = 2.0) -> Optional[Dict[str, Any]]:
+    """Lấy dữ liệu precheck còn mới (trong vòng max_age_sec, mặc định 2.0 giây)."""
+    ts, data = _precheck_snapshot
+    if (time.time() - ts) <= max_age_sec and data is not None:
+        return data
+    return None
+
+
+def draw_overlay(frame: np.ndarray) -> np.ndarray:
+    """Vẽ khung và nhãn lên bản sao của khung hình stream (CP-03, B5 CP-07).
+
+    - Ưu tiên 1: Kết quả precheck đăng ký B5 CP-07 (còn mới dưới 2.0s):
+      + exists: khung ĐỎ (0, 0, 220), nhãn "ĐÃ TỒN TẠI: <tên>".
+      + new: khung XANH DƯƠNG (255, 140, 0), nhãn "Người mới".
+    - Ưu tiên 2: Kết quả nhận diện B12 qua get_latest_overlay() (dưới 1.5s):
+      + granted: khung XANH LÁ (0, 200, 0), nhãn full_name, 5 landmarks.
+      + denied: khung ĐỎ (0, 0, 220), nhãn "Không xác định".
+      + tracking: khung VÀNG CAM (0, 215, 255), nhãn "Đang nhận diện...".
+    - Quá thời gian quy định thì ngừng vẽ nhãn.
     - Vẽ trên bản sao frame.copy() để tuyệt đối không ảnh hưởng khung hình gốc của AI.
-    - Nhận diện cư dân: khung tight_box màu xanh lá (0, 200, 0), nhãn full_name, 5 landmarks.
-    - Người lạ / từ chối: khung tight_box màu đỏ (0, 0, 220), nhãn "Không xác định".
-    - Đang nhận diện: khung màu vàng cam (0, 215, 255), nhãn "Đang nhận diện...".
     """
+    # 1. Kiểm tra precheck đăng ký trước (B5 CP-07)
+    precheck = get_latest_precheck(max_age_sec=2.0)
+    if precheck is not None:
+        box = precheck.get("box")
+        if box and len(box) >= 4:
+            display_frame = frame.copy()
+            x1, y1, x2, y2 = [int(v) for v in box]
+            exists = bool(precheck.get("exists", False))
+            name = precheck.get("name", "")
+
+            if exists:
+                color = (0, 0, 220)       # Đỏ
+                label = f"ĐÃ TỒN TẠI: {name}" if name else "ĐÃ TỒN TẠI"
+            else:
+                color = (255, 140, 0)     # Xanh dương (BGR)
+                label = "Người mới"
+
+            cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
+            landmarks = precheck.get("landmarks")
+            if landmarks:
+                for pt in landmarks:
+                    if len(pt) >= 2:
+                        lx, ly = int(pt[0]), int(pt[1])
+                        cv2.circle(display_frame, (lx, ly), radius=3, color=(0, 255, 255), thickness=-1)
+            _draw_label_banner(display_frame, label, x1, y1, color)
+            return display_frame
+
+    # 2. Overlay tự động xác thực B12
     overlay_items = get_latest_overlay(max_age_sec=1.5)
     if not overlay_items:
         return frame

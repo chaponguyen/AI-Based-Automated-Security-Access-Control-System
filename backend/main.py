@@ -97,7 +97,7 @@ app.add_middleware(
 )
 
 from api import residents, verify, logs, ws, camera, stream
-for r in (residents.router, verify.router, logs.router, ws.router, camera.router, stream.router):
+for r in (residents.router, residents.registration_router, verify.router, logs.router, ws.router, camera.router, stream.router):
     app.include_router(r)
 
 

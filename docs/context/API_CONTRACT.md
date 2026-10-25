@@ -2,7 +2,8 @@
 
 | Method | Đường dẫn | Vào | Ra |
 |---|---|---|---|
-| POST | `/api/residents` | multipart: `full_name`, `age`, `apartment_number` (backend tự quay 3 giây từ camera, không nhận khung hình) | 201 `{id, user_code, frames_kept}`; 422 `{reason: "not_enough_quality_frames", good: n, required: 15}`; 409 `{reason: "registration_in_progress"}` |
+| POST | `/api/residents` | multipart: `full_name`, `age`, `apartment_number` (backend tự quay 3 giây từ camera, không nhận khung hình) | 201 `{id, user_code, frames_kept}`; 422 `{reason: "not_enough_quality_frames", good: n, required: 15}`; 409 `{reason: "registration_in_progress"}` hoặc 409 `{reason: "already_registered", user: {...}, similarity: x}` |
+| GET | `/api/registration/precheck` | — (khung camera hiện tại) | `{"state": "no_face"\|"multiple_faces"\|"low_quality"\|"new"\|"exists", "exists": bool, "user": {...}\|null, "similarity": float\|null, "box": [x1,y1,x2,y2]\|null}` |
 | GET | `/api/residents` | — | `[{id, user_code, full_name, age, apartment_number, status, frames}]` |
 | PATCH | `/api/residents/{id}/status` | `{status: "active"\|"inactive"}` | cư dân đã cập nhật |
 | POST | `/api/verify` | multipart: `image` | `{user, similarity, liveness, decision, reason, box, crop_b64}` |

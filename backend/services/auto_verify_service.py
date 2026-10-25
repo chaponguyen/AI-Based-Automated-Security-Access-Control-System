@@ -377,7 +377,16 @@ class AutoVerifyService:
         - Xử lý độc lập từng khuôn mặt được theo dõi trong khung hình.
         - Khi có nhiều sự kiện cùng lúc trong khung hình: ưu tiên cảnh báo người lạ phát trước
           dù có cư dân đi cùng (chống tailgating, DECISIONS_LOG).
+
+        B5 CP-07:
+        - Trong lúc precheck đăng ký còn mới (< 2.0s): AutoVerifyService vẫn theo dõi mặt
+          nhưng KHÔNG ghi access_logs và KHÔNG phát access_result để tránh sinh log "đã vào".
         """
+        from services.stream_service import get_latest_precheck
+        if get_latest_precheck(max_age_sec=2.0) is not None:
+            logger.debug("Đang có phiên precheck đăng ký (< 2.0s), tạm bỏ qua phát access_result và ghi log")
+            return
+
         pending_actions = []
 
         for track in ready_tracks:

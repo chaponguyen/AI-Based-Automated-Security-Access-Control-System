@@ -13,11 +13,133 @@ from services.registration_service import (
     record_registration_frames,
     register_resident,
     NotEnoughQualityFramesError,
+    AlreadyRegisteredError,
+    find_existing_resident,
 )
 
 router = APIRouter(prefix="/api/residents", tags=["residents"])
+registration_router = APIRouter(prefix="/api/registration", tags=["registration"])
 
 
+@registration_router.get("/precheck")
+def precheck_registration():
+    """Kiểm tra khuôn mặt hiện tại trước camera trước khi đăng ký (B5 CP-07).
+
+    - Lấy camera.latest()
+    - detect_faces, chọn mặt lớn nhất nếu có nhiều mặt
+    - Trả về state: 'no_face' | 'multiple_faces' | 'low_quality' | 'new' | 'exists'
+    - exists: bool
+    - user: {id, user_code, full_name, apartment_number, status} | null
+    - similarity: float | null
+    - box: [x1, y1, x2, y2] | null
+    - Cập nhật màu khung trên stream: ĐỎ nhãn 'ĐÃ TỒN TẠI: <tên>' nếu trùng, XANH DƯƠNG 'Người mới' nếu chưa có.
+    - Dùng def thường. Không ghi access_logs, không phát access_result.
+    """
+    from services.camera_service import get_camera
+    from services import gallery_cache
+    from services.stream_service import set_latest_precheck
+    from ai.detector import detect_faces
+    from ai.quality import frame_quality
+    from ai.aligner import crop_face
+    from ai.embedder import get_embedding
+
+    camera = get_camera()
+    now_t, frame = camera.latest()
+    if frame is None:
+        set_latest_precheck(None)
+        return {
+            "state": "no_face",
+            "exists": False,
+            "user": None,
+            "similarity": None,
+            "box": None,
+        }
+
+    faces = detect_faces(frame)
+    if not faces:
+        set_latest_precheck(None)
+        return {
+            "state": "no_face",
+            "exists": False,
+            "user": None,
+            "similarity": None,
+            "box": None,
+        }
+
+    if len(faces) > 1:
+        # Có nhiều hơn 1 mặt: chọn mặt lớn nhất để trả box
+        def face_area(fc):
+            b = fc.get("bbox", [0, 0, 0, 0])
+            return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
+        largest = max(faces, key=face_area)
+        box = [int(v) for v in largest.get("bbox", [0, 0, 0, 0])]
+        set_latest_precheck(None)
+        return {
+            "state": "multiple_faces",
+            "exists": False,
+            "user": None,
+            "similarity": None,
+            "box": box,
+        }
+
+    # Đúng 1 mặt trong khung hình
+    face = faces[0]
+    box = [int(v) for v in face.get("bbox", [0, 0, 0, 0])]
+    q = frame_quality(frame, faces, allow_multiple=False)
+    if not q.get("ok"):
+        set_latest_precheck(None)
+        return {
+            "state": "low_quality",
+            "exists": False,
+            "user": None,
+            "similarity": None,
+            "box": box,
+        }
+
+    # Đạt chất lượng: trích xuất embedding và so khớp với GalleryCache
+    aligned = crop_face(frame, face["kps"])
+    emb = get_embedding(aligned)
+    gallery = gallery_cache.get_gallery()
+    matched_id, similarity = find_existing_resident(emb, gallery)
+
+    if matched_id is not None:
+        matched_user = gallery_cache.get_user(matched_id) or {}
+        user_dict = {
+            "id": matched_user.get("id", matched_id),
+            "user_code": matched_user.get("user_code"),
+            "full_name": matched_user.get("full_name"),
+            "apartment_number": matched_user.get("apartment_number"),
+            "status": matched_user.get("status"),
+        }
+        # Lưu kết quả precheck vào stream overlay (màu ĐỎ nhãn "ĐÃ TỒN TẠI: <tên>")
+        set_latest_precheck({
+            "box": box,
+            "landmarks": face.get("kps"),
+            "exists": True,
+            "name": user_dict.get("full_name", ""),
+        })
+        return {
+            "state": "exists",
+            "exists": True,
+            "user": user_dict,
+            "similarity": round(float(similarity), 4),
+            "box": box,
+        }
+    else:
+        # Người mới chưa có trong hệ thống
+        set_latest_precheck({
+            "box": box,
+            "landmarks": face.get("kps"),
+            "exists": False,
+            "name": "Người mới",
+        })
+        return {
+            "state": "new",
+            "exists": False,
+            "user": None,
+            "similarity": round(float(similarity), 4) if similarity > 0 else None,
+            "box": box,
+        }
 
 
 class ResidentResponse(BaseModel):
@@ -186,6 +308,51 @@ def create_resident(
                 detail="apartment_number phải từ 1 đến 20 ký tự và chỉ chứa chữ cái, chữ số, hoặc -, /, .",
             )
 
+        # B5 CP-07: (a) TRƯỚC khi quay: kiểm tra trên khung camera hiện tại
+        from services.camera_service import get_camera
+        from services import gallery_cache
+        from services.stream_service import set_latest_precheck
+        from ai.detector import detect_faces
+        from ai.quality import frame_quality
+        from ai.aligner import crop_face
+        from ai.embedder import get_embedding
+
+        camera = get_camera()
+        now_t, current_frame = camera.latest()
+        if current_frame is not None:
+            faces = detect_faces(current_frame)
+            if len(faces) == 1:
+                face = faces[0]
+                q = frame_quality(current_frame, faces, allow_multiple=False)
+                if q.get("ok"):
+                    aligned = crop_face(current_frame, face["kps"])
+                    emb = get_embedding(aligned)
+                    matched_id, sim = find_existing_resident(emb, gallery_cache.get_gallery())
+                    if matched_id is not None:
+                        matched_user = gallery_cache.get_user(matched_id) or {}
+                        user_payload = {
+                            "id": matched_user.get("id", matched_id),
+                            "user_code": matched_user.get("user_code"),
+                            "full_name": matched_user.get("full_name"),
+                            "apartment_number": matched_user.get("apartment_number"),
+                            "status": matched_user.get("status"),
+                        }
+                        # Đổi màu khung trên stream sang đỏ ngay lập tức
+                        set_latest_precheck({
+                            "box": [int(v) for v in face.get("bbox", [0, 0, 0, 0])],
+                            "landmarks": face.get("kps"),
+                            "exists": True,
+                            "name": user_payload.get("full_name", ""),
+                        })
+                        return JSONResponse(
+                            status_code=status.HTTP_409_CONFLICT,
+                            content={
+                                "reason": "already_registered",
+                                "user": user_payload,
+                                "similarity": round(float(sim), 4),
+                            },
+                        )
+
         # CP-02: Quay 3 giây từ camera backend, tạm dừng AI và phát tiến độ qua WebSocket
         frames = record_registration_frames()
 
@@ -195,6 +362,16 @@ def create_resident(
                 db,
                 {"full_name": name_clean, "age": age, "apartment_number": apt_clean},
                 frames,
+            )
+        except AlreadyRegisteredError as e:
+            # B5 CP-07: (b) SAU khi quay và lọc khung: trùng thì trả 409 already_registered
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "reason": "already_registered",
+                    "user": e.user,
+                    "similarity": round(float(e.similarity), 4),
+                },
             )
         except NotEnoughQualityFramesError as e:
             return JSONResponse(

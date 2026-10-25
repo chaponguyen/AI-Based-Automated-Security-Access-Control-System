@@ -1,8 +1,15 @@
+import os
 import logging
 import threading
-
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Union, Dict, Tuple
 import numpy as np
+
+try:
+    from ai.config import SIM_THRESHOLD
+except ImportError:
+    from ai.matcher import SIM_THRESHOLD
+
+from ai.matcher import best_match
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +21,85 @@ MODEL_VERSION = "buffalo_sc"
 
 # Khóa luồng đảm bảo chỉ có tối đa một phiên đăng ký cư dân diễn ra tại một thời điểm
 registration_lock = threading.Lock()
+
+
+def get_duplicate_sim_threshold() -> float:
+    """Lấy ngưỡng tương đồng xác định trùng lặp đăng ký cư dân (B5 CP-07)."""
+    raw = os.getenv("DUPLICATE_SIM_THRESHOLD")
+    if raw is not None and raw.strip() != "":
+        try:
+            return float(raw.strip())
+        except ValueError:
+            pass
+    return float(SIM_THRESHOLD)
+
+
+class AlreadyRegisteredError(Exception):
+    """Ném ra khi phát hiện khuôn mặt đăng ký đã tồn tại trong danh bạ (B5 CP-07)."""
+
+    def __init__(self, user: dict, similarity: float):
+        self.user = user
+        self.similarity = similarity
+        super().__init__(f"Khuôn mặt đã tồn tại: {user.get('full_name')} (sim={similarity:.4f})")
+
+
+def find_existing_resident(
+    embeddings: Union[np.ndarray, List[Any]],
+    gallery: Optional[Dict[int, np.ndarray]] = None,
+    threshold: Optional[float] = None,
+) -> Tuple[Optional[int], float]:
+    """Hàm thuần tìm cư dân đã tồn tại trong danh bạ gallery khớp với vector đầu vào (B5 CP-07).
+
+    Args:
+        embeddings: Vector 1D (512,) hoặc 2D (n, 512) hoặc danh sách các vector 512 chiều.
+        gallery: Dict {user_id: ndarray (n, 512)}. Nếu None sẽ lấy từ GalleryCache (gồm cả inactive).
+        threshold: Ngưỡng tương đồng (mặc định lấy từ get_duplicate_sim_threshold()).
+
+    Returns:
+        (matched_user_id | None, similarity)
+        Nếu similarity >= threshold, trả về (user_id, similarity).
+        Ngược lại trả về (None, similarity).
+    """
+    if embeddings is None:
+        return None, 0.0
+
+    if gallery is None:
+        from services import gallery_cache
+        gallery = gallery_cache.get_gallery()
+
+    if not gallery:
+        return None, 0.0
+
+    if threshold is None:
+        threshold = get_duplicate_sim_threshold()
+
+    arr = np.asarray(embeddings, dtype=np.float64)
+    if arr.size == 0:
+        return None, 0.0
+
+    # Nếu truyền mảng 2D (nhiều khung hình đã quay): tính vector trung bình chuẩn hóa L2
+    if arr.ndim == 2:
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        valid = (norms > 1e-12).squeeze()
+        if not np.any(valid):
+            return None, 0.0
+        unit_arr = arr[valid] / norms[valid]
+        mean_vec = np.mean(unit_arr, axis=0)
+        mean_norm = np.linalg.norm(mean_vec)
+        if mean_norm < 1e-12:
+            return None, 0.0
+        query_vec = mean_vec / mean_norm
+    elif arr.ndim == 1:
+        query_vec = arr
+    else:
+        raise ValueError(f"embeddings phải có shape (512,) hoặc (n, 512), nhận {arr.shape}")
+
+    matched_user_id, similarity = best_match(query_vec, gallery)
+    similarity = float(similarity)
+
+    if matched_user_id is not None and similarity >= threshold:
+        return matched_user_id, similarity
+    return None, similarity
 
 
 class NotEnoughQualityFramesError(Exception):
@@ -169,7 +255,28 @@ def register_resident(db, info, frames, _fail_at_embedding: Optional[int] = None
             "user": None,
         }
 
-    # 4. Lưu trong MỘT Transaction duy nhất
+    # 4. B5 CP-07: Kiểm tra trùng lặp - So sánh vector embedding trung bình của các khung giữ lại với gallery
+    all_embs = [rec[0] for rec in embedding_records]
+    matched_user_id, duplicate_sim = find_existing_resident(all_embs)
+    if matched_user_id is not None:
+        from services import gallery_cache
+        matched_user_data = gallery_cache.get_user(matched_user_id) or {}
+        user_payload = {
+            "id": matched_user_data.get("id", matched_user_id),
+            "user_code": matched_user_data.get("user_code"),
+            "full_name": matched_user_data.get("full_name"),
+            "apartment_number": matched_user_data.get("apartment_number"),
+            "status": matched_user_data.get("status"),
+        }
+        logger.info(
+            "Phát hiện cư dân đã tồn tại khi đăng ký: %s (id=%s, sim=%.4f)",
+            user_payload.get("full_name"),
+            user_payload.get("id"),
+            duplicate_sim,
+        )
+        raise AlreadyRegisteredError(user=user_payload, similarity=duplicate_sim)
+
+    # 5. Lưu trong MỘT Transaction duy nhất
     try:
         user = User(
             full_name=full_name,

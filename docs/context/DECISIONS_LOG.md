@@ -25,6 +25,7 @@
 | B4 chưa đạt tiêu chí chống giả mạo: 8/8 ảnh chụp lại màn hình lọt ở mọi ngưỡng 0,40–0,80; giữ `LIVENESS_MIN=0,60` | MiniFASNetV2 bỏ sót replay phủ kín khung (mất viền màn hình trong vùng cắt 2,7). Chưa có ngưỡng nào tách được ảnh thật/giả trên bộ hiện tại; cần thêm liveness theo thời gian hoặc model khác rồi đo lại, không tăng ngưỡng >0,99 dựa trên 8 ảnh |
 | B14 loa tạm hoãn | Dừng B14 phần loa theo chỉ đạo của chủ dự án; giữ `backend/services/speaker_service.py` ngoài commit |
 | Khung hình nhiều mặt: xử lý độc lập từng mặt; có người lạ thì vẫn cảnh báo dù có cư dân đi cùng; cả hai sự kiện cùng lúc thì cảnh báo người lạ ưu tiên | Đảm bảo an ninh tối đa, ngăn chặn hành vi bám đuôi cư dân (tailgating) để đột nhập trái phép |
+| Chống đăng ký trùng khuôn mặt (precheck và post-check) | Chủ dự án duyệt (2026-10-25). Ngăn ngừa việc một người đăng ký nhiều lần; route GET /api/registration/precheck và kiểm tra 2 lớp trước/sau khi quay POST /api/residents; cảnh báo đỏ trên stream "ĐÃ TỒN TẠI" và trả 409 already_registered khi similarity >= DUPLICATE_SIM_THRESHOLD |
 
 
 ## Đề xuất đổi contract
