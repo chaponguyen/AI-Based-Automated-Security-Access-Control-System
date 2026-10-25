@@ -19,6 +19,8 @@ from services.speaker_text import announcement
 from api.ws import broadcast
 from ai.detector import detect_faces
 from ai.quality import frame_quality
+from ai.aligner import tight_box
+from services.stream_service import set_latest_overlay
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +102,10 @@ class TrackedFace:
         self.last_triggered_at: Optional[float] = None
         self.last_decision: Optional[str] = None
         self.user_id: Optional[int] = None
+
+        # Trạng thái hiển thị overlay trên luồng stream (B13 CP-03)
+        self.name: str = "Đang nhận diện..."
+        self.decision: str = "tracking"
 
     def update(self, face: dict, is_qualified: bool, now: float) -> None:
         """Cập nhật vị trí và trạng thái ổn định khi được khớp trong khung mới."""
@@ -232,6 +238,7 @@ class AutoVerifyService:
             self._thread.join(timeout=timeout)
             logger.info("AutoVerifyService luồng nền đã dừng sạch sẽ.")
         self._thread = None
+        set_latest_overlay([])
 
     def is_running(self) -> bool:
         """Kiểm tra luồng nền có đang chạy hay không."""
@@ -455,6 +462,32 @@ class AutoVerifyService:
                     is_stranger = True
                     final_res = track.verify_history[-1]
 
+            # B13 CP-03: Cập nhật thông tin hiển thị khung và nhãn cho TrackedFace
+            if is_granted:
+                u = final_res.get("user")
+                full_name = u.get("full_name") if isinstance(u, dict) else (getattr(u, "full_name", None) or "Cư dân")
+                track.name = full_name
+                track.decision = "granted"
+            elif is_inactive:
+                track.name = "Thẻ bị khóa"
+                track.decision = "denied"
+            elif is_stranger:
+                track.name = "Không xác định"
+                track.decision = "denied"
+            else:
+                if track.verify_history:
+                    latest_v = track.verify_history[-1]
+                    if latest_v.get("decision") == "granted":
+                        u = latest_v.get("user")
+                        track.name = u.get("full_name") if isinstance(u, dict) else (getattr(u, "full_name", None) or "Cư dân")
+                        track.decision = "granted"
+                    elif latest_v.get("reason") in ("not_matched", "spoof_detected"):
+                        track.name = "Không xác định"
+                        track.decision = "denied"
+                    else:
+                        track.name = "Đang nhận diện..."
+                        track.decision = "tracking"
+
             # 4. Kiểm tra cooldown trước khi đưa vào hàng chờ phát sự kiện
             if final_res is not None and (is_granted or is_inactive or is_stranger):
                 # - Cư dân (granted/inactive): khóa GRANTED_COOLDOWN_S theo user_id
@@ -593,6 +626,7 @@ class AutoVerifyService:
 
                 # 1. Kiểm tra cờ tạm dừng AI (khi B5 đang quay video đăng ký)
                 if is_paused:
+                    set_latest_overlay([])
                     self._stop_event.wait(timeout=0.2)
                     continue
 
@@ -643,6 +677,36 @@ class AutoVerifyService:
 
                 finally:
                     db.close()
+
+                # B13 CP-03: Cập nhật dữ liệu khung/nhãn cho stream MJPEG (hoán đổi nguyên tử không khóa lâu)
+                overlay_items = []
+                with self._lock:
+                    for track in self._tracked_faces.values():
+                        t_box = None
+                        if track.kps is not None:
+                            try:
+                                t_box = tight_box(track.kps, image_shape=frame.shape)
+                            except Exception:
+                                t_box = None
+                        if t_box is None:
+                            t_box = [int(v) for v in track.bbox]
+                        else:
+                            t_box = [int(v) for v in t_box]
+
+                        kps_list = None
+                        if track.kps is not None:
+                            try:
+                                kps_list = [[float(pt[0]), float(pt[1])] for pt in track.kps]
+                            except Exception:
+                                kps_list = None
+
+                        overlay_items.append({
+                            "box": t_box,
+                            "landmarks": kps_list,
+                            "name": track.name,
+                            "decision": track.decision,
+                        })
+                set_latest_overlay(overlay_items)
 
                 # 5. Cập nhật thống kê FPS thực tế
                 self._fps_count += 1
