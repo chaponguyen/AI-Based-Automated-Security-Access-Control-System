@@ -336,7 +336,15 @@ class AutoVerifyService:
         return ready_tracks
 
     def _process_verification(self, db, frame: np.ndarray, ready_tracks: List[TrackedFace], now: float) -> None:
-        """Thực hiện xác thực khuôn mặt và phát sự kiện ra quyết định kèm chống báo lặp (CP-03, CP-04)."""
+        """Thực hiện xác thực khuôn mặt và phát sự kiện ra quyết định kèm chống báo lặp (CP-03, CP-04, CP-05).
+
+        CP-05:
+        - Xử lý độc lập từng khuôn mặt được theo dõi trong khung hình.
+        - Khi có nhiều sự kiện cùng lúc trong khung hình: ưu tiên cảnh báo người lạ phát trước
+          dù có cư dân đi cùng (chống tailgating, DECISIONS_LOG).
+        """
+        pending_actions = []
+
         for track in ready_tracks:
             # 1. Kiểm tra trạng thái cooldown của track nếu đã kích hoạt trước đó (hỗ trợ đứng yên lâu - CP-04)
             if track.triggered:
@@ -364,7 +372,7 @@ class AutoVerifyService:
                     track.triggered = False
                     track.verify_history.clear()
 
-            # 2. Gọi verify_face (B6) cho khuôn mặt đủ điều kiện
+            # 2. Gọi verify_face (B6) cho khuôn mặt đủ điều kiện (xử lý độc lập cho từng khuôn mặt)
             face_dict = track.to_face_dict()
             v_res = verify_face(db, frame, face_dict)
 
@@ -419,7 +427,7 @@ class AutoVerifyService:
                     is_stranger = True
                     final_res = track.verify_history[-1]
 
-            # 4. Áp dụng cơ chế chống báo lặp CP-04 trước khi phát sự kiện và ghi log
+            # 4. Kiểm tra cooldown trước khi đưa vào hàng chờ phát sự kiện
             if final_res is not None and (is_granted or is_inactive or is_stranger):
                 # - Cư dân (granted/inactive): khóa GRANTED_COOLDOWN_S theo user_id
                 if is_granted or is_inactive:
@@ -451,49 +459,64 @@ class AutoVerifyService:
                         track.last_decision = "stranger"
                         continue
 
-                # 5. QUAN TRỌNG: Chỉ ghi ĐÚNG 1 dòng access_logs khi thực sự phát sự kiện
-                log_entry = record_access(db, final_res)
-                log_time = log_entry.timestamp if (log_entry and log_entry.timestamp) else datetime.now()
+                # CP-05: Đưa vào danh sách chờ xử lý kèm mức ưu tiên:
+                # Người lạ ưu tiên cao nhất (priority 0), inactive (priority 1), granted (priority 2)
+                decision_type = "stranger" if is_stranger else ("inactive" if is_inactive else "granted")
+                priority = 0 if is_stranger else (1 if is_inactive else 2)
+                pending_actions.append((priority, track, final_res, decision_type, target_user_id))
 
-                # Dựng thông báo announcement (display và spoken) cùng thời điểm với log
-                ann = announcement(final_res, when=log_time)
+        if not pending_actions:
+            return
 
-                # Dựng payload access_result đúng hợp đồng API_CONTRACT
-                access_result_data = {
-                    "user": final_res.get("user"),
-                    "decision": final_res.get("decision"),
-                    "reason": final_res.get("reason"),
-                    "similarity": final_res.get("similarity"),
-                    "box": [int(v) for v in track.bbox],
-                    "timestamp": log_time.isoformat() if hasattr(log_time, "isoformat") else str(log_time),
-                    "announcement": ann,
-                }
+        # CP-05: Sắp xếp các sự kiện theo thứ tự ưu tiên: Cảnh báo người lạ luôn được phát trước!
+        pending_actions.sort(key=lambda item: item[0])
 
-                # Phát sự kiện qua WebSocket và callback
-                self._emit_event("access_result", access_result_data)
-                self._last_event_at = now
+        for priority, track, final_res, decision_type, target_user_id in pending_actions:
+            # 5. QUAN TRỌNG: Chỉ ghi ĐÚNG 1 dòng access_logs khi thực sự phát sự kiện
+            log_entry = record_access(db, final_res)
+            log_time = log_entry.timestamp if (log_entry and log_entry.timestamp) else datetime.now()
 
-                # Cập nhật thời điểm cooldown (CP-04)
-                if is_granted or is_inactive:
-                    if target_user_id is not None:
-                        self._resident_cooldown[target_user_id] = now
-                        track.user_id = target_user_id
-                        track.last_decision = "granted" if is_granted else "inactive_user"
-                elif is_stranger:
-                    self._last_stranger_alert_at = now
-                    track.last_decision = "stranger"
+            # Dựng thông báo announcement (display và spoken) cùng thời điểm với log
+            ann = announcement(final_res, when=log_time)
 
-                # Đánh dấu đã kích hoạt cho track này
-                track.triggered = True
-                track.last_triggered_at = now
+            # Dựng payload access_result đúng hợp đồng API_CONTRACT
+            access_result_data = {
+                "user": final_res.get("user"),
+                "decision": final_res.get("decision"),
+                "reason": final_res.get("reason"),
+                "similarity": final_res.get("similarity"),
+                "box": [int(v) for v in track.bbox],
+                "timestamp": log_time.isoformat() if hasattr(log_time, "isoformat") else str(log_time),
+                "announcement": ann,
+            }
 
-                logger.info(
-                    "Đã kích hoạt sự kiện access_result: decision=%s, reason=%s, user=%s (Track %d)",
-                    final_res.get("decision"),
-                    final_res.get("reason"),
-                    final_res.get("user", {}).get("full_name") if final_res.get("user") else "None",
-                    track.track_id,
-                )
+            # Phát sự kiện qua WebSocket và callback
+            self._emit_event("access_result", access_result_data)
+            self._last_event_at = now
+
+            # Cập nhật thời điểm cooldown (CP-04, CP-05)
+            if decision_type in ("granted", "inactive"):
+                if target_user_id is not None:
+                    self._resident_cooldown[target_user_id] = now
+                    track.user_id = target_user_id
+                    track.last_decision = decision_type
+            elif decision_type == "stranger":
+                self._last_stranger_alert_at = now
+                track.last_decision = "stranger"
+
+            # Đánh dấu đã kích hoạt cho track này
+            track.triggered = True
+            track.last_triggered_at = now
+
+            logger.info(
+                "Đã kích hoạt sự kiện access_result (ưu tiên=%s, p=%d): decision=%s, reason=%s, user=%s (Track %d)",
+                decision_type,
+                priority,
+                final_res.get("decision"),
+                final_res.get("reason"),
+                final_res.get("user", {}).get("full_name") if final_res.get("user") else "None",
+                track.track_id,
+            )
 
     def _worker(self) -> None:
         """Vòng lặp thực thi của luồng nền."""

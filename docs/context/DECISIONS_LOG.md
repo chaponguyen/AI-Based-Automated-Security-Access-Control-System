@@ -24,6 +24,7 @@
 | Mỗi viewer mã hóa JPEG riêng nên CPU tăng gần tuyến tính theo số viewers (13% / 20,8% / 55% với 0 / 1 / 3 viewers) | Hiện tại hệ thống phục vụ nội bộ ít người xem; phương án nếu cần cho nhiều client: mã hóa một lần chia sẻ buffer cho nhiều client |
 | B4 chưa đạt tiêu chí chống giả mạo: 8/8 ảnh chụp lại màn hình lọt ở mọi ngưỡng 0,40–0,80; giữ `LIVENESS_MIN=0,60` | MiniFASNetV2 bỏ sót replay phủ kín khung (mất viền màn hình trong vùng cắt 2,7). Chưa có ngưỡng nào tách được ảnh thật/giả trên bộ hiện tại; cần thêm liveness theo thời gian hoặc model khác rồi đo lại, không tăng ngưỡng >0,99 dựa trên 8 ảnh |
 | B14 loa tạm hoãn | Dừng B14 phần loa theo chỉ đạo của chủ dự án; giữ `backend/services/speaker_service.py` ngoài commit |
+| Khung hình nhiều mặt: xử lý độc lập từng mặt; có người lạ thì vẫn cảnh báo dù có cư dân đi cùng; cả hai sự kiện cùng lúc thì cảnh báo người lạ ưu tiên | Đảm bảo an ninh tối đa, ngăn chặn hành vi bám đuôi cư dân (tailgating) để đột nhập trái phép |
 
 
 ## Đề xuất đổi contract
