@@ -1,5 +1,10 @@
-// Agent 3 — Form (họ tên, tuổi, căn hộ) + quay 3 giây (useCamera + RecordProgress) + gửi frames. Danh sách + bật/tắt active/inactive. Không có cư dân nào tồn tại mà thiếu khuôn mặt.
-import { useState } from 'react'
+// Agent 3 — Thêm cư dân kèm đăng ký khuôn mặt, danh sách và bật/tắt quyền ra vào.
+import { useEffect, useRef, useState } from 'react'
+import LiveStream from '../components/LiveStream.jsx'
+import RecordProgress from '../components/RecordProgress.jsx'
+import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
+import { api, getApiErrorMessage } from '../services/api.js'
+import { mockRegisterEnabled, mockRegisterResident } from '../services/mock.js'
 
 const emptyForm = { full_name: '', age: '', apartment_number: '' }
 
@@ -24,10 +29,36 @@ function validateResidentForm(form) {
 }
 
 export default function Residents() {
+  const { connected, cameraStatus, recording } = useDashboardSocket()
   const [form, setForm] = useState(emptyForm)
   const [errors, setErrors] = useState({})
   const [submitted, setSubmitted] = useState(false)
   const [notice, setNotice] = useState('')
+  const [noticeError, setNoticeError] = useState(false)
+  const [registering, setRegistering] = useState(false)
+  const [elapsedMs, setElapsedMs] = useState(0)
+  const [residents, setResidents] = useState([])
+  const recordingAtStartRef = useRef(null)
+
+  useEffect(() => {
+    if (!registering) {
+      setElapsedMs(0)
+      return undefined
+    }
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => setElapsedMs(Date.now() - startedAt), 100)
+    return () => window.clearInterval(timer)
+  }, [registering])
+
+  const refreshResidents = async () => {
+    if (mockRegisterEnabled) return
+    try {
+      const { data } = await api.get('/residents')
+      setResidents(Array.isArray(data) ? data : [])
+    } catch {
+      // CP-06 hiển thị lỗi danh sách và cho phép tải lại.
+    }
+  }
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -35,19 +66,67 @@ export default function Residents() {
     setForm(nextForm)
     if (submitted || errors[name]) setErrors(validateResidentForm(nextForm))
     setNotice('')
+    setNoticeError(false)
   }
 
   const handleSubmit = (event) => {
     event.preventDefault()
+    if (registering) return
     setSubmitted(true)
     const nextErrors = validateResidentForm(form)
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length === 0) {
-      setNotice('Thông tin hợp lệ. Có thể bắt đầu quay để đăng ký khuôn mặt.')
+      void registerResident()
     } else {
       setNotice('Vui lòng sửa các mục được đánh dấu.')
+      setNoticeError(true)
     }
   }
+
+  const registerResident = async () => {
+    setRegistering(true)
+    setElapsedMs(0)
+    setNotice('')
+    setNoticeError(false)
+    recordingAtStartRef.current = recording
+
+    try {
+      let result
+      if (mockRegisterEnabled) {
+        // TODO: chuyển sang POST thật khi B5 hoàn tất và bỏ cờ VITE_MOCK_REGISTER.
+        result = await mockRegisterResident(form)
+        setResidents((items) => [result.data, ...items])
+      } else {
+        const body = new FormData()
+        body.append('full_name', form.full_name.trim())
+        body.append('age', String(Number(form.age)))
+        body.append('apartment_number', form.apartment_number.trim())
+        result = await api.post('/residents', body)
+        await refreshResidents()
+      }
+
+      setNotice(`Đăng ký thành công: ${result.data.user_code} · giữ lại ${result.data.frames_kept} khung.`)
+      setNoticeError(false)
+      setForm(emptyForm)
+      setErrors({})
+      setSubmitted(false)
+    } catch (error) {
+      const status = error.response?.status
+      const detail = error.response?.data || {}
+      if (status === 422 && detail.reason === 'not_enough_quality_frames') {
+        setNotice(`Chỉ thu được ${detail.good ?? 0}/${detail.required ?? 15} khung đạt, hãy nhìn thẳng và đủ sáng rồi thử lại.`)
+      } else if (status === 409) {
+        setNotice('Đang có lượt đăng ký khác. Vui lòng đợi rồi thử lại.')
+      } else {
+        setNotice(getApiErrorMessage(error, 'Đăng ký chưa thành công. Vui lòng thử lại.'))
+      }
+      setNoticeError(true)
+    } finally {
+      setRegistering(false)
+    }
+  }
+
+  const currentRecording = recording !== recordingAtStartRef.current ? recording : null
 
   return (
     <main className="page residents-page">
@@ -71,6 +150,7 @@ export default function Residents() {
                 id="resident-full-name"
                 name="full_name"
                 value={form.full_name}
+                disabled={registering}
                 onChange={handleChange}
                 onBlur={() => setErrors(validateResidentForm(form))}
                 maxLength={150}
@@ -92,6 +172,7 @@ export default function Residents() {
                 max="120"
                 step="1"
                 value={form.age}
+                disabled={registering}
                 onChange={handleChange}
                 onBlur={() => setErrors(validateResidentForm(form))}
                 aria-invalid={Boolean(errors.age)}
@@ -106,6 +187,7 @@ export default function Residents() {
                 id="resident-apartment"
                 name="apartment_number"
                 value={form.apartment_number}
+                disabled={registering}
                 onChange={handleChange}
                 onBlur={() => setErrors(validateResidentForm(form))}
                 maxLength={20}
@@ -117,10 +199,18 @@ export default function Residents() {
             </label>
           </div>
 
-          <p className="muted form-hint">Thông tin được kiểm tra trên giao diện trước khi gửi lên backend.</p>
+          <p className="muted form-hint">Backend sẽ quay 3 giây từ camera riêng; trình duyệt không mở camera.</p>
+          {registering && (
+            <div className="registration-progress">
+              <RecordProgress elapsedMs={elapsedMs} recording={currentRecording} />
+              <LiveStream cameraStatus={cameraStatus} connected={connected} startOnMount />
+            </div>
+          )}
           <div className="resident-form__actions">
-            <button className="button button--primary" type="submit">Kiểm tra thông tin</button>
-            {notice && <p className={Object.keys(errors).length ? 'form-notice form-notice--error' : 'form-notice'} role="status">{notice}</p>}
+            <button className="button button--primary" type="submit" disabled={registering}>
+              {registering ? 'Đang quay 3 giây…' : 'Quay 3 giây và lưu cư dân'}
+            </button>
+            {notice && <p className={noticeError ? 'form-notice form-notice--error' : 'form-notice'} role="status">{notice}</p>}
           </div>
         </form>
       </section>

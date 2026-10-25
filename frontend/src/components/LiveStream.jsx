@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../services/api.js'
 
-export default function LiveStream({ cameraStatus, connected, onStatusChange }) {
+export default function LiveStream({ cameraStatus, connected, onStatusChange, startOnMount = false }) {
   const [enabled, setEnabled] = useState(false)
   const [streamTimestamp, setStreamTimestamp] = useState(0)
   const [retrying, setRetrying] = useState(false)
@@ -13,6 +13,7 @@ export default function LiveStream({ cameraStatus, connected, onStatusChange }) 
   const streamTimestampRef = useRef(0)
   const previousConnectedRef = useRef(Boolean(connected))
   const previousCameraRunningRef = useRef(cameraStatus?.running)
+  const autoStartedRef = useRef(false)
   const cameraUnavailable = cameraStatus?.running === false
 
   useEffect(() => {
@@ -80,6 +81,16 @@ export default function LiveStream({ cameraStatus, connected, onStatusChange }) 
     setRetrying(false)
     setEnabled(false)
   }
+
+  useEffect(() => {
+    if (startOnMount && !enabledRef.current) {
+      autoStartedRef.current = true
+      startStream()
+    } else if (!startOnMount && autoStartedRef.current) {
+      autoStartedRef.current = false
+      stopStream()
+    }
+  }, [startOnMount])
 
   useEffect(() => {
     const wasConnected = previousConnectedRef.current
