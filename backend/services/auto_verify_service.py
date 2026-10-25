@@ -103,8 +103,13 @@ class TrackedFace:
         self.last_decision: Optional[str] = None
         self.user_id: Optional[int] = None
 
-        # Trạng thái hiển thị overlay trên luồng stream (B13 CP-03)
-        self.name: str = "Đang nhận diện..."
+        # Kết quả xác thực riêng cho từng track phục vụ stream overlay (B13 CP-03)
+        self.latest_decision: str = "tracking"     # "granted" | "denied" | "tracking"
+        self.latest_name: str = "Đang xác minh..."
+        self.latest_similarity: Optional[float] = None
+        self.latest_verified_at: float = 0.0
+        self.latest_reason: Optional[str] = None
+        self.name: str = "Đang xác minh..."
         self.decision: str = "tracking"
 
     def update(self, face: dict, is_qualified: bool, now: float) -> None:
@@ -390,10 +395,10 @@ class AutoVerifyService:
         pending_actions = []
 
         for track in ready_tracks:
-            # 1. Kiểm tra trạng thái cooldown của track nếu đã kích hoạt trước đó (hỗ trợ đứng yên lâu - CP-04)
+            # 1. Kiểm tra trạng thái cooldown để nhả cờ nếu đã hết hạn
             if track.triggered:
                 # Xác định thời gian cooldown tương ứng theo quyết định trước đó
-                if track.last_decision in ("granted", "inactive_user") and track.user_id is not None:
+                if track.last_decision in ("granted", "inactive_user", "inactive") and track.user_id is not None:
                     # Cư dân: khóa theo GRANTED_COOLDOWN_S (60s) theo user_id
                     cooldown_sec = GRANTED_COOLDOWN_S
                     last_time = max(track.last_triggered_at or 0.0, self._resident_cooldown.get(track.user_id, 0.0))
@@ -402,10 +407,7 @@ class AutoVerifyService:
                     cooldown_sec = STRANGER_REST_S
                     last_time = max(track.last_triggered_at or 0.0, self._last_stranger_alert_at)
 
-                if (now - last_time) < cooldown_sec:
-                    # Vẫn đang trong thời gian cooldown/nghỉ: bỏ qua, không gọi verify_face để tiết kiệm CPU
-                    continue
-                else:
+                if (now - last_time) >= cooldown_sec:
                     # Đã hết thời gian cooldown: nhả cờ triggered để đánh giá lại
                     logger.debug(
                         "Track %d đã hết thời gian cooldown (%.1fs >= %.1fs), reset để xác thực lại",
@@ -415,6 +417,13 @@ class AutoVerifyService:
                     )
                     track.triggered = False
                     track.verify_history.clear()
+                else:
+                    # Đang trong thời gian cooldown:
+                    # Cooldown CHỈ áp dụng cho việc ghi log và phát access_result, KHÔNG áp dụng cho việc vẽ.
+                    # Để tiết kiệm CPU mà vẫn đảm bảo overlay luôn mới (< 3s), chỉ chạy verify_face nếu
+                    # lần xác thực gần nhất của track đã cách hơn 0.5s.
+                    if (now - track.latest_verified_at) < 0.5:
+                        continue
 
             # 2. Gọi verify_face (B6) cho khuôn mặt đủ điều kiện (xử lý độc lập cho từng khuôn mặt)
             face_dict = track.to_face_dict()
@@ -471,31 +480,49 @@ class AutoVerifyService:
                     is_stranger = True
                     final_res = track.verify_history[-1]
 
-            # B13 CP-03: Cập nhật thông tin hiển thị khung và nhãn cho TrackedFace
+            # B13 CP-03: Cập nhật thông tin hiển thị khung và nhãn cho TrackedFace theo từng track
             if is_granted:
                 u = final_res.get("user")
                 full_name = u.get("full_name") if isinstance(u, dict) else (getattr(u, "full_name", None) or "Cư dân")
+                track.latest_decision = "granted"
+                track.latest_name = full_name
+                track.latest_similarity = final_res.get("similarity")
+                track.latest_verified_at = now
+                track.latest_reason = final_res.get("reason")
                 track.name = full_name
                 track.decision = "granted"
+                track.user_id = target_user_id
             elif is_inactive:
+                track.latest_decision = "denied"
+                track.latest_name = "Thẻ bị khóa"
+                track.latest_similarity = final_res.get("similarity")
+                track.latest_verified_at = now
+                track.latest_reason = "inactive_user"
                 track.name = "Thẻ bị khóa"
                 track.decision = "denied"
+                track.user_id = target_user_id
             elif is_stranger:
+                track.latest_decision = "denied"
+                track.latest_name = "Không xác định"
+                track.latest_similarity = final_res.get("similarity")
+                track.latest_verified_at = now
+                track.latest_reason = final_res.get("reason")
                 track.name = "Không xác định"
                 track.decision = "denied"
             else:
-                if track.verify_history:
-                    latest_v = track.verify_history[-1]
-                    if latest_v.get("decision") == "granted":
-                        u = latest_v.get("user")
-                        track.name = u.get("full_name") if isinstance(u, dict) else (getattr(u, "full_name", None) or "Cư dân")
-                        track.decision = "granted"
-                    elif latest_v.get("reason") in ("not_matched", "spoof_detected"):
-                        track.name = "Không xác định"
-                        track.decision = "denied"
-                    else:
-                        track.name = "Đang nhận diện..."
-                        track.decision = "tracking"
+                # Chưa đủ 2 kết quả granted liên tiếp VÀ chưa đủ 3/5 kết quả denied:
+                # Màu mặc định khi đang xác minh / chưa có kết quả là VÀNG ("Đang xác minh..."), KHÔNG phải đỏ!
+                # Nếu trước đó track đã là granted và kết quả còn mới (dưới 3s), giữ granted để tránh nhấp nháy do 1 khung hình nhiễu
+                if track.latest_decision == "granted" and (now - track.latest_verified_at) <= 3.0:
+                    pass
+                else:
+                    track.latest_decision = "tracking"
+                    track.latest_name = "Đang xác minh..."
+                    track.latest_similarity = v_res.get("similarity")
+                    track.latest_verified_at = now
+                    track.latest_reason = v_res.get("reason")
+                    track.name = "Đang xác minh..."
+                    track.decision = "tracking"
 
             # 4. Kiểm tra cooldown trước khi đưa vào hàng chờ phát sự kiện
             if final_res is not None and (is_granted or is_inactive or is_stranger):
@@ -710,10 +737,13 @@ class AutoVerifyService:
                                 kps_list = None
 
                         overlay_items.append({
+                            "track_id": track.track_id,
                             "box": t_box,
                             "landmarks": kps_list,
-                            "name": track.name,
-                            "decision": track.decision,
+                            "name": track.latest_name,
+                            "decision": track.latest_decision,
+                            "similarity": track.latest_similarity,
+                            "verified_at": track.latest_verified_at,
                         })
                 set_latest_overlay(overlay_items)
 

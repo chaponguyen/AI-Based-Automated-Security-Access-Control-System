@@ -194,6 +194,8 @@ def draw_overlay(frame: np.ndarray) -> np.ndarray:
 
     # BẮT BUỘC sao chép để không làm biến đổi khung gốc trong CameraService
     display_frame = frame.copy()
+    now = time.time()
+    debug_overlay = os.getenv("DEBUG_OVERLAY", "0").strip() in ("1", "true", "True")
 
     for item in overlay_items:
         box = item.get("box")
@@ -202,19 +204,36 @@ def draw_overlay(frame: np.ndarray) -> np.ndarray:
 
         x1, y1, x2, y2 = [int(v) for v in box]
         landmarks = item.get("landmarks")
-        name = item.get("name") or "Không xác định"
+        name = item.get("name") or "Đang xác minh..."
         decision = item.get("decision", "tracking")
+        similarity = item.get("similarity")
+        verified_at = float(item.get("verified_at") or 0.0)
 
-        # Xác định màu sắc theo quyết định
-        if decision == "granted":
+        # Kiểm tra độ mới của kết quả xác thực theo track (dưới 3 giây)
+        is_fresh = (verified_at > 0.0) and ((now - verified_at) <= 3.0)
+
+        # Xác định màu sắc và nhãn theo quy tắc B13 CP-03:
+        # - XANH LÁ: kết quả gần nhất của track là granted (cư dân) và còn mới (< 3s)
+        # - ĐỎ: denied đã xác nhận (người lạ / thẻ bị khóa) và còn mới (< 3s)
+        # - VÀNG: đang xác minh (tracking, mới xuất hiện, chưa đủ kết quả, hoặc kết quả cũ hơn 3s)
+        # Màu mặc định khi chưa có kết quả là VÀNG, KHÔNG phải đỏ.
+        if decision == "granted" and is_fresh:
             color = (0, 200, 0)      # Xanh lá
             label = name
-        elif decision == "denied":
+        elif decision == "denied" and is_fresh:
             color = (0, 0, 220)      # Đỏ
-            label = name if name != "Đang nhận diện..." else "Không xác định"
+            label = name if name not in ("Đang xác minh...", "Đang nhận diện...") else "Không xác định"
         else:
-            color = (0, 215, 255)    # Vàng cam (đang theo dõi / phân tích)
-            label = name
+            color = (0, 215, 255)    # Vàng cam (đang xác minh)
+            label = "Đang xác minh..."
+
+        # Thêm similarity vào cuối nhãn khi DEBUG_OVERLAY=1 (ví dụ "Khuê 0.58")
+        if debug_overlay and similarity is not None:
+            try:
+                sim_val = float(similarity)
+                label = f"{label} {sim_val:.2f}"
+            except Exception:
+                pass
 
         # 1. Vẽ hình chữ nhật tight_box quanh khuôn mặt
         cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
