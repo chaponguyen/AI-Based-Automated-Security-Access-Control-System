@@ -1,10 +1,15 @@
-# Agent 2 — Vòng lặp tự động xác thực khuôn mặt chạy nền (B12 CP-01, CP-02, CP-03)
+# Agent 2 — Vòng lặp tự động xác thực khuôn mặt chạy nền (B12 CP-01, CP-02, CP-03, CP-04)
+import os
 import time
 import logging
 import threading
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple, Callable
 import numpy as np
+from dotenv import load_dotenv
+
+# Tải cấu hình từ backend/.env
+load_dotenv()
 
 from database.database import SessionLocal
 from services.camera_service import get_camera
@@ -17,6 +22,19 @@ from ai.quality import frame_quality
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_float_env(key: str, default: float) -> float:
+    """Đọc biến môi trường kiểu số thực, dùng mặc định nếu thiếu hoặc sai định dạng."""
+    raw = os.getenv(key)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError:
+        logger.warning("Cấu hình '%s=%s' không hợp lệ: phải là số thực/nguyên. Dùng mặc định %s", key, raw, default)
+        return default
+
+
 # ==================== CẤU HÌNH THAM SỐ VÒNG LẶP ====================
 AI_FPS_ACTIVE = 6.0         # Tốc độ tối đa khi có mặt hoặc vừa thấy mặt (khung/giây)
 AI_FPS_IDLE = 3.0           # Tốc độ khi không có mặt trong 5 giây (khung/giây)
@@ -28,9 +46,15 @@ STABLE_FRAMES_REQUIRED = 3  # Số khung hình liên tiếp ổn định (~0.5 g
 IOU_THRESHOLD = 0.5         # Ngưỡng IoU để liên kết theo dõi cùng một khuôn mặt
 
 # Cấu hình chống báo lặp (CP-04)
-RESIDENT_COOLDOWN_SEC = 60.0  # Chống báo lặp cho cư dân granted (giây)
-STRANGER_COOLDOWN_SEC = 15.0  # Thời gian nghỉ sau khi cảnh báo người lạ (giây)
+# GRANTED_COOLDOWN_S: Cư dân granted không báo lại trong 60 giây (khóa theo user_id)
+# STRANGER_REST_S: Người lạ cảnh báo khi có ít nhất 3/5 kết quả denied, sau đó nghỉ 15 giây
+GRANTED_COOLDOWN_S = _parse_float_env("GRANTED_COOLDOWN_S", 60.0)
+STRANGER_REST_S = _parse_float_env("STRANGER_REST_S", 15.0)
 STRANGER_MIN_DENIED = 3       # Số lần denied trong 5 kết quả gần nhất để cảnh báo người lạ
+
+# Tương thích ngược tên biến cũ
+RESIDENT_COOLDOWN_SEC = GRANTED_COOLDOWN_S
+STRANGER_COOLDOWN_SEC = STRANGER_REST_S
 
 
 def compute_iou(box_a: List[float], box_b: List[float]) -> float:
@@ -74,6 +98,8 @@ class TrackedFace:
         self.verify_history: List[dict] = []
         self.triggered: bool = False
         self.last_triggered_at: Optional[float] = None
+        self.last_decision: Optional[str] = None
+        self.user_id: Optional[int] = None
 
     def update(self, face: dict, is_qualified: bool, now: float) -> None:
         """Cập nhật vị trí và trạng thái ổn định khi được khớp trong khung mới."""
@@ -160,6 +186,10 @@ class AutoVerifyService:
         self._next_track_id: int = 1
         self._last_event_at: Optional[float] = None
         self._on_event_callback: Optional[Callable[[str, dict], None]] = None
+
+        # Cơ chế chống báo lặp (CP-04)
+        self._resident_cooldown: Dict[int, float] = {}  # {user_id: last_granted_timestamp}
+        self._last_stranger_alert_at: float = 0.0       # timestamp lần cuối cảnh báo người lạ
 
     def set_event_callback(self, callback: Optional[Callable[[str, dict], None]]) -> None:
         """Đăng ký hàm callback nhận sự kiện (phục vụ cắm loa hoặc MQTT sau này)."""
@@ -305,14 +335,36 @@ class AutoVerifyService:
 
         return ready_tracks
 
-    def _process_verification(self, db, frame: np.ndarray, ready_tracks: List[TrackedFace]) -> None:
-        """Thực hiện xác thực khuôn mặt và phát sự kiện ra quyết định (CP-03)."""
+    def _process_verification(self, db, frame: np.ndarray, ready_tracks: List[TrackedFace], now: float) -> None:
+        """Thực hiện xác thực khuôn mặt và phát sự kiện ra quyết định kèm chống báo lặp (CP-03, CP-04)."""
         for track in ready_tracks:
-            # Nếu track này đã kích hoạt sự kiện cho lần xuất hiện này thì bỏ qua
+            # 1. Kiểm tra trạng thái cooldown của track nếu đã kích hoạt trước đó (hỗ trợ đứng yên lâu - CP-04)
             if track.triggered:
-                continue
+                # Xác định thời gian cooldown tương ứng theo quyết định trước đó
+                if track.last_decision in ("granted", "inactive_user") and track.user_id is not None:
+                    # Cư dân: khóa theo GRANTED_COOLDOWN_S (60s) theo user_id
+                    cooldown_sec = GRANTED_COOLDOWN_S
+                    last_time = max(track.last_triggered_at or 0.0, self._resident_cooldown.get(track.user_id, 0.0))
+                else:
+                    # Người lạ / Spoof: nghỉ STRANGER_REST_S (15s)
+                    cooldown_sec = STRANGER_REST_S
+                    last_time = max(track.last_triggered_at or 0.0, self._last_stranger_alert_at)
 
-            # Gọi verify_face (B6) cho khuôn mặt đủ điều kiện
+                if (now - last_time) < cooldown_sec:
+                    # Vẫn đang trong thời gian cooldown/nghỉ: bỏ qua, không gọi verify_face để tiết kiệm CPU
+                    continue
+                else:
+                    # Đã hết thời gian cooldown: nhả cờ triggered để đánh giá lại
+                    logger.debug(
+                        "Track %d đã hết thời gian cooldown (%.1fs >= %.1fs), reset để xác thực lại",
+                        track.track_id,
+                        now - last_time,
+                        cooldown_sec,
+                    )
+                    track.triggered = False
+                    track.verify_history.clear()
+
+            # 2. Gọi verify_face (B6) cho khuôn mặt đủ điều kiện
             face_dict = track.to_face_dict()
             v_res = verify_face(db, frame, face_dict)
 
@@ -321,13 +373,14 @@ class AutoVerifyService:
             if len(track.verify_history) > 5:
                 track.verify_history.pop(0)
 
-            # Kiểm tra điều kiện ra quyết định chính thức:
+            # 3. Đánh giá điều kiện ra quyết định chính thức:
             is_granted = False
             is_inactive = False
             is_stranger = False
             final_res = None
+            target_user_id = None
 
-            # 1. Kiểm tra Granted: Có 2 kết quả liên tiếp cùng một cư dân đều đạt
+            # a) Kiểm tra Granted: Có 2 kết quả liên tiếp cùng một cư dân đều đạt
             for i in range(len(track.verify_history) - 1):
                 r_a = track.verify_history[i]
                 r_b = track.verify_history[i + 1]
@@ -344,9 +397,10 @@ class AutoVerifyService:
                 ):
                     is_granted = True
                     final_res = r_b
+                    target_user_id = u_b_id
                     break
 
-                # 2. Kiểm tra Inactive: 2 kết quả liên tiếp báo inactive_user cùng một người
+                # b) Kiểm tra Inactive: 2 kết quả liên tiếp báo inactive_user cùng một người
                 elif (
                     r_a.get("reason") == "inactive_user"
                     and r_b.get("reason") == "inactive_user"
@@ -355,17 +409,49 @@ class AutoVerifyService:
                 ):
                     is_inactive = True
                     final_res = r_b
+                    target_user_id = u_b_id
                     break
 
-            # 3. Kiểm tra Người lạ (Stranger/Spoof): khi không phải cư dân và có ít nhất 3/5 kết quả denied
+            # c) Kiểm tra Người lạ (Stranger/Spoof): khi không phải cư dân và có ít nhất 3/5 kết quả denied
             if not is_granted and not is_inactive:
                 denied_results = [r for r in track.verify_history if r.get("decision") == "denied"]
                 if len(track.verify_history) >= 3 and len(denied_results) >= STRANGER_MIN_DENIED:
                     is_stranger = True
                     final_res = track.verify_history[-1]
 
+            # 4. Áp dụng cơ chế chống báo lặp CP-04 trước khi phát sự kiện và ghi log
             if final_res is not None and (is_granted or is_inactive or is_stranger):
-                # Ghi ĐÚNG 1 dòng access_logs bằng record_access
+                # - Cư dân (granted/inactive): khóa GRANTED_COOLDOWN_S theo user_id
+                if is_granted or is_inactive:
+                    if target_user_id is not None:
+                        last_resident_event = self._resident_cooldown.get(target_user_id, 0.0)
+                        if (now - last_resident_event) < GRANTED_COOLDOWN_S:
+                            logger.debug(
+                                "Cư dân %d đang trong thời gian cooldown %ds (còn %.1fs), bỏ qua báo lặp",
+                                target_user_id,
+                                int(GRANTED_COOLDOWN_S),
+                                GRANTED_COOLDOWN_S - (now - last_resident_event),
+                            )
+                            track.triggered = True
+                            track.last_triggered_at = now
+                            track.user_id = target_user_id
+                            track.last_decision = "granted" if is_granted else "inactive_user"
+                            continue
+
+                # - Người lạ (stranger/spoof): nghỉ STRANGER_REST_S sau mỗi lần cảnh báo
+                elif is_stranger:
+                    if (now - self._last_stranger_alert_at) < STRANGER_REST_S:
+                        logger.debug(
+                            "Cảnh báo người lạ đang trong thời gian nghỉ %ds (còn %.1fs), bỏ qua báo lặp",
+                            int(STRANGER_REST_S),
+                            STRANGER_REST_S - (now - self._last_stranger_alert_at),
+                        )
+                        track.triggered = True
+                        track.last_triggered_at = now
+                        track.last_decision = "stranger"
+                        continue
+
+                # 5. QUAN TRỌNG: Chỉ ghi ĐÚNG 1 dòng access_logs khi thực sự phát sự kiện
                 log_entry = record_access(db, final_res)
                 log_time = log_entry.timestamp if (log_entry and log_entry.timestamp) else datetime.now()
 
@@ -385,11 +471,21 @@ class AutoVerifyService:
 
                 # Phát sự kiện qua WebSocket và callback
                 self._emit_event("access_result", access_result_data)
-                self._last_event_at = time.time()
+                self._last_event_at = now
 
-                # Đánh dấu đã kích hoạt cho track này để không ghi log hay phát lặp lại
+                # Cập nhật thời điểm cooldown (CP-04)
+                if is_granted or is_inactive:
+                    if target_user_id is not None:
+                        self._resident_cooldown[target_user_id] = now
+                        track.user_id = target_user_id
+                        track.last_decision = "granted" if is_granted else "inactive_user"
+                elif is_stranger:
+                    self._last_stranger_alert_at = now
+                    track.last_decision = "stranger"
+
+                # Đánh dấu đã kích hoạt cho track này
                 track.triggered = True
-                track.last_triggered_at = time.time()
+                track.last_triggered_at = now
 
                 logger.info(
                     "Đã kích hoạt sự kiện access_result: decision=%s, reason=%s, user=%s (Track %d)",
@@ -403,6 +499,16 @@ class AutoVerifyService:
         """Vòng lặp thực thi của luồng nền."""
         logger.info("Bắt đầu vòng lặp worker AutoVerifyService.")
         camera = get_camera()
+
+        # Đảm bảo GalleryCache đã được nạp nếu service chạy độc lập
+        try:
+            from services.gallery_cache import get_gallery_cache
+            cache = get_gallery_cache()
+            if cache.stats().get("total_users", 0) == 0:
+                cache.reload()
+                logger.info("AutoVerifyService đã tự động nạp GalleryCache: %s", cache.stats())
+        except Exception as cache_err:
+            logger.debug("Tự động nạp GalleryCache trong worker: %s", cache_err)
 
         while not self._stop_event.is_set():
             loop_start = time.perf_counter()
@@ -452,7 +558,7 @@ class AutoVerifyService:
                         # CP-03: Thực hiện xác thực cho các track đã sẵn sàng
                         if ready_tracks:
                             with self._lock:
-                                self._process_verification(db, frame, ready_tracks)
+                                self._process_verification(db, frame, ready_tracks, now)
                     else:
                         # Khi không có khuôn mặt trong khung: xóa trạng thái theo dõi
                         with self._lock:
