@@ -60,9 +60,10 @@ class FrameSource(ABC):
         pass
 
     @abstractmethod
-    def record(self, sec: float, on_tick: Optional[Callable[[int, int], None]] = None) -> List[np.ndarray]:
+    def record(self, sec: float, on_tick: Optional[Callable[..., None]] = None) -> List[np.ndarray]:
         """Thu các khung hình mới trong sec giây tiếp theo."""
         pass
+
 
     @abstractmethod
     def status(self) -> dict:
@@ -277,11 +278,11 @@ class LocalCamera(FrameSource):
     def record(
         self,
         sec: float,
-        on_tick: Optional[Callable[[int, int], None]] = None,
+        on_tick: Optional[Callable[..., None]] = None,
     ) -> List[np.ndarray]:
         """Thu các khung hình mới trong sec giây tiếp theo với tốc độ lấy mẫu ~10 khung/giây.
 
-        Gọi on_tick(t_ms, got) mỗi khung thu được.
+        Gọi on_tick(t_ms, got, [frame]) mỗi khung thu được.
         Trả về danh sách các khung hình đã thu (khoảng 25 - 32 khung với sec=3.0).
         """
         frames: List[np.ndarray] = []
@@ -312,12 +313,16 @@ class LocalCamera(FrameSource):
                     last_frame_ts = self._latest_time
                     target_time = start_time + len(frames) * target_interval - tolerance
                     if now >= target_time and self._latest_frame is not None:
-                        frames.append(self._latest_frame.copy())
+                        current_frame = self._latest_frame.copy()
+                        frames.append(current_frame)
                         got = len(frames)
                         t_ms = int((now - start_time) * 1000)
                         if on_tick is not None:
                             try:
-                                on_tick(t_ms, got)
+                                try:
+                                    on_tick(t_ms, got, current_frame)
+                                except TypeError:
+                                    on_tick(t_ms, got)
                             except Exception as e:
                                 logger.warning("Lỗi trong on_tick callback của record: %s", e)
 

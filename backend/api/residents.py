@@ -8,9 +8,10 @@ from sqlalchemy import func
 
 from database.database import get_db
 from database.models import User, FaceEmbedding
-from services.registration_service import registration_lock
+from services.registration_service import registration_lock, record_registration_frames
 
 router = APIRouter(prefix="/api/residents", tags=["residents"])
+
 
 
 class ResidentResponse(BaseModel):
@@ -179,10 +180,14 @@ def create_resident(
                 detail="apartment_number phải từ 1 đến 20 ký tự và chỉ chứa chữ cái, chữ số, hoặc -, /, .",
             )
 
-        # CP-01: Khung route và kiểm tra dữ liệu thành công
+        # CP-02: Quay 3 giây từ camera backend, tạm dừng AI và phát tiến độ qua WebSocket
+        frames = record_registration_frames()
+
+        # CP-02: Tạm trả về số khung thu được, bước lọc CP-03 và lưu CP-04 sẽ tiếp tục
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
-            content={"id": 0, "user_code": "USR000000", "frames_kept": 0},
+            content={"id": 0, "user_code": "USR000000", "frames_kept": len(frames)},
         )
+
     finally:
         registration_lock.release()
