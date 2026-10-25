@@ -8,7 +8,7 @@ import AccessLogs from './pages/AccessLogs.jsx'
 export default function App() {
   return (
     <BrowserRouter>
-      <nav><NavLink to="/">Tổng quan</NavLink> <NavLink to="/residents">Cư dân</NavLink> <NavLink to="/verify">Xác thực</NavLink> <NavLink to="/logs">Nhật ký</NavLink></nav>
+      <nav className="app-nav" aria-label="Điều hướng chính"><NavLink to="/">Tổng quan</NavLink><NavLink to="/residents">Cư dân</NavLink><NavLink to="/verify">Xác thực</NavLink><NavLink to="/logs">Nhật ký</NavLink></nav>
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/residents" element={<Residents />} />

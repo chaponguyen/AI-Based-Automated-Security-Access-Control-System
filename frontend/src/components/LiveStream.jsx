@@ -2,12 +2,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../services/api.js'
 
-export default function LiveStream({ cameraStatus }) {
+export default function LiveStream({ cameraStatus, onStatusChange }) {
   const [enabled, setEnabled] = useState(false)
   const [streamKey, setStreamKey] = useState(0)
   const [loadError, setLoadError] = useState(false)
   const imageRef = useRef(null)
   const cameraUnavailable = cameraStatus?.running === false
+
+  useEffect(() => {
+    onStatusChange?.({ enabled, error: loadError })
+  }, [enabled, loadError, onStatusChange])
 
   useEffect(() => {
     const activeImage = imageRef.current

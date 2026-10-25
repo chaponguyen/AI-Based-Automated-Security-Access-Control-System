@@ -76,6 +76,27 @@ export function useDashboardSocket() {
       }
     }
 
+    const handleMockEvent = (customEvent) => {
+      const { event, data } = customEvent.detail || {}
+      if (!data || typeof data !== 'object') return
+      switch (event) {
+        case 'access_result':
+          setLastResult(data)
+          break
+        case 'camera_status':
+          setCameraStatus(data)
+          break
+        case 'ai_status':
+          setAiStatus(data)
+          break
+        case 'record_progress':
+          setRecording(data)
+          break
+        default:
+          break
+      }
+    }
+
     const reconnect = () => {
       if (stopped || reconnectTimer !== null) return
       attempt += 1
@@ -86,6 +107,7 @@ export function useDashboardSocket() {
     }
 
     connect()
+    window.addEventListener('dashboard:mock-event', handleMockEvent)
     const pollTimer = window.setInterval(async () => {
       if (stopped || connectedRef.current) return
       try {
@@ -99,6 +121,7 @@ export function useDashboardSocket() {
     return () => {
       stopped = true
       connectedRef.current = false
+      window.removeEventListener('dashboard:mock-event', handleMockEvent)
       window.clearInterval(pollTimer)
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
       if (socket) {
