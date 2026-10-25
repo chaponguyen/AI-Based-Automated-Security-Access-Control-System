@@ -65,6 +65,8 @@ def get_logs(
     if isinstance(from_time, str) and from_time.strip():
         try:
             dt_from = datetime.fromisoformat(from_time.strip().replace("Z", "+00:00"))
+            if dt_from.tzinfo is not None:
+                dt_from = dt_from.astimezone().replace(tzinfo=None)
             query = query.filter(AccessLog.timestamp >= dt_from)
         except ValueError:
             raise HTTPException(
@@ -75,6 +77,8 @@ def get_logs(
     if isinstance(to_time, str) and to_time.strip():
         try:
             dt_to = datetime.fromisoformat(to_time.strip().replace("Z", "+00:00"))
+            if dt_to.tzinfo is not None:
+                dt_to = dt_to.astimezone().replace(tzinfo=None)
             query = query.filter(AccessLog.timestamp <= dt_to)
         except ValueError:
             raise HTTPException(
