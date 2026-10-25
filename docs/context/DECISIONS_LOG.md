@@ -23,6 +23,8 @@
 | Đổi contract (hàm, route, schema) phải được chủ dự án duyệt trước | Ba Agent song song dựa vào contract; một Agent tự đổi sẽ làm hai Agent kia hỏng |
 | Mỗi viewer mã hóa JPEG riêng nên CPU tăng gần tuyến tính theo số viewers (13% / 20,8% / 55% với 0 / 1 / 3 viewers) | Hiện tại hệ thống phục vụ nội bộ ít người xem; phương án nếu cần cho nhiều client: mã hóa một lần chia sẻ buffer cho nhiều client |
 | B4 chưa đạt tiêu chí chống giả mạo: 8/8 ảnh chụp lại màn hình lọt ở mọi ngưỡng 0,40–0,80; giữ `LIVENESS_MIN=0,60` | MiniFASNetV2 bỏ sót replay phủ kín khung (mất viền màn hình trong vùng cắt 2,7). Chưa có ngưỡng nào tách được ảnh thật/giả trên bộ hiện tại; cần thêm liveness theo thời gian hoặc model khác rồi đo lại, không tăng ngưỡng >0,99 dựa trên 8 ảnh |
+| B14 loa tạm hoãn | Dừng B14 phần loa theo chỉ đạo của chủ dự án; giữ `backend/services/speaker_service.py` ngoài commit |
+
 
 ## Đề xuất đổi contract
 (Agent ghi đề xuất ở đây: ID việc, thay đổi muốn làm, lý do, Agent nào bị ảnh hưởng. Chủ dự án duyệt hoặc từ chối rồi ghi kết quả bên cạnh.)
