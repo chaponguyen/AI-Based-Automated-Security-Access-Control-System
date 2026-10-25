@@ -108,6 +108,11 @@ tbody tr:last-child td { border-bottom: 0; }
 .mock-label { display: inline-block; color: var(--warn); font-size: 10px; }
 .resident-table { min-width: 720px; }
 .resident-list-panel > .form-notice { margin-top: 2px; }
+.logs-panel { display: grid; gap: 18px; }
+.logs-filters { display: grid; grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(135px, 1fr)); gap: 12px; }
+.logs-filters .field input, .logs-filters .field select { width: 100%; min-height: 42px; border: 1px solid #cbd7de; border-radius: 9px; padding: 9px 11px; color: var(--ink); background: #fff; }
+.logs-results { min-height: 70px; }
+.logs-table { min-width: 780px; }
 
 @media (max-width: 900px) {
   .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
