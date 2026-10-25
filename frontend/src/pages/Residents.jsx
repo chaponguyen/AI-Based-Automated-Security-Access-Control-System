@@ -265,9 +265,8 @@ export default function Residents() {
             disabled={registrationBusy}
             startLabel="Bật xem trước để căn mặt"
             stopLabel="Tắt xem trước"
-            overlay={<div className="resident-face-guide" aria-hidden="true"><span /></div>}
           />
-          <p className="resident-preview-caption">Đặt khuôn mặt vào trong khung, nhìn thẳng, đủ sáng, chỉ một người trong khung</p>
+          <p className="resident-preview-caption">Ngồi cách camera khoảng nửa mét, nhìn thẳng, đủ sáng, chỉ một người trong khung.</p>
         </section>
 
         <section className="panel resident-form-panel">
