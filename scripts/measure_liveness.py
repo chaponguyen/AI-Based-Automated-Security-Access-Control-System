@@ -22,7 +22,7 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
 from ai.anti_spoof import check_liveness_sequence, liveness_score  # noqa: E402
-from ai.config import LIVENESS_SEQ_MAX_FRAMES  # noqa: E402
+from ai.config import LIVENESS_MIN, LIVENESS_SEQ_MAX_FRAMES  # noqa: E402
 from ai.detector import detect_faces  # noqa: E402
 
 EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -171,6 +171,206 @@ def print_clips(rows):
               f"{score} | {motion} | {std} | {ket} ({r['mode']}) |")
 
 
+# --- Cửa sổ trượt: đánh giá luật ứng viên trên toàn bộ khung của clip (B4 CP-06) ---
+SLIDE_FPS = 10                 # khung/giây khi đọc clip, để cửa sổ 10-15 khung ~ 1-1,5 giây
+SLIDE_LENGTHS = (10, 15)       # số khung mỗi cửa sổ
+FRACTION_YS = (0.70, 0.80, 0.90)   # tỷ lệ khung đạt trong cửa sổ
+STD_XS = (0.02, 0.05, 0.10, 0.15, 0.20, 0.30)
+
+
+def read_scores(path, fps_target=SLIDE_FPS):
+    """Đọc TOÀN BỘ clip trên lưới thời gian fps_target (10 khung/giây).
+
+    Trả (scores, times, coverage, src_fps):
+    - scores/times: chỉ các khung có mặt theo dõi được (IoU >= 0,3 với khung trước).
+    - coverage: số khung lấy mẫu và số khung có mặt, để biết clip có bao nhiêu phần
+      thực sự đánh giá được (khung không có mặt thì pipeline chặn ở bước phát hiện).
+    """
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        raise IOError(f"khong mo duoc clip: {path}")
+    src_fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+    step_t = 1.0 / fps_target
+    next_t, idx, last_box = 0.0, 0, None
+    scores, times = [], []
+    samples = with_face = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        t = idx / src_fps if src_fps > 0 else idx
+        idx += 1
+        if t + 1e-6 < next_t:
+            continue
+        next_t += step_t          # lưới thời gian tuyệt đối, không bị trôi
+        samples += 1
+        faces = detect_faces(frame)
+        if not faces:
+            continue
+        if last_box is None:
+            face = max(faces, key=lambda f: (f["bbox"][2] - f["bbox"][0]) *
+                       (f["bbox"][3] - f["bbox"][1]))
+        else:
+            face = max(faces, key=lambda f: _iou(last_box, f["bbox"]))
+            if _iou(last_box, face["bbox"]) < 0.3:
+                continue
+        last_box = face["bbox"]
+        with_face += 1
+        scores.append(liveness_score(frame, last_box))
+        times.append(t)
+    cap.release()
+    return scores, times, {"mau": samples, "co_mat": with_face}, src_fps
+
+
+def windows_of(scores, times, length):
+    """Các cửa sổ trượt bước 1 khung (chồng lấn, không độc lập), kèm khoảng thời gian."""
+    out = []
+    for i in range(len(scores) - length + 1):
+        w = scores[i:i + length]
+        t0, t1 = times[i], times[i + length - 1]
+        out.append({
+            "start": i,
+            "t_start": t0,
+            "t_end": t1,
+            "span": t1 - t0,
+            "median": float(np.median(w)),
+            "frac": float(np.mean([s >= LIVENESS_MIN for s in w])),
+            "std": float(np.std(w)),
+        })
+    return out
+
+
+def _pass_rate(wins, rule):
+    return sum(1 for w in wins if rule(w)) / len(wins) if wins else float("nan")
+
+
+def sliding_report(root):
+    """Đọc mọi clip, chấm điểm toàn bộ khung, đánh giá 3 họ luật trên cửa sổ trượt."""
+    folders = [os.path.join(root, name) for name in CLIP_FOLDERS]
+    data = {}          # nhom -> [(ten clip, scores)]
+    for folder in folders:
+        if not os.path.isdir(folder):
+            print(f"  (bo qua, khong thay thu muc) {folder}")
+            continue
+        nhom = os.path.basename(folder)
+        for name in sorted(os.listdir(folder)):
+            path = os.path.join(folder, name)
+            if not os.path.isfile(path) or os.path.splitext(name)[1].lower() not in VEXTS:
+                continue
+            try:
+                scores, times, cov, src_fps = read_scores(path)
+            except IOError as exc:
+                print(f"  LOI {name}: {exc}")
+                continue
+            pct = 100.0 * cov["co_mat"] / cov["mau"] if cov["mau"] else 0.0
+            print(f"  {nhom}/{name}: {src_fps:.1f} fps, lay mau {cov['mau']} khung, "
+                  f"co mat {cov['co_mat']} ({pct:.0f}%), cham diem {len(scores)} khung")
+            data.setdefault(nhom, []).append((name, scores, times))
+    if not data:
+        print("Khong co clip nao.")
+        return
+
+    real = [x for x in data.get("live_video", [])]
+    spoof = [x for fam in ("spoof_photo", "spoof_video") for x in data.get(fam, [])]
+    if not real or not spoof:
+        print("Can it nhat 1 clip that va 1 clip gia de so sanh.")
+        return
+
+    rows = []
+    for length in SLIDE_LENGTHS:
+        real_w = []
+        for name, scores, times in real:
+            wins = windows_of(scores, times, length)
+            real_w += wins
+            rows += [dict(nhom="that", clip=name, L=length, **w) for w in wins]
+        spoof_w = []
+        for name, scores, times in spoof:
+            wins = windows_of(scores, times, length)
+            spoof_w += wins
+            rows += [dict(nhom="gia", clip=name, L=length, **w) for w in wins]
+
+        print(f"\n=== L={length} khung (~{length / SLIDE_FPS:.1f} giay) ===")
+        print(f"  That: {len(real_w)} cua so | Gia: {len(spoof_w)} cua so "
+              "(cac cua so chong lan nen KHONG doc lap)")
+        if real_w:
+            print("  Khoang thoi gian thuc cua cua so (that): %.2f..%.2f giay"
+                  % (min(w["span"] for w in real_w), max(w["span"] for w in real_w)))
+        if spoof_w:
+            print("  Khoang thoi gian thuc cua cua so (gia): %.2f..%.2f giay"
+                  % (min(w["span"] for w in spoof_w), max(w["span"] for w in spoof_w)))
+
+        # (i) trung vi >= 0,60
+        rule_i = lambda w: w["median"] >= LIVENESS_MIN
+        pr = _pass_rate(real_w, rule_i)
+        ps = _pass_rate(spoof_w, rule_i)
+        print(f"  (i)  trung vi >= {LIVENESS_MIN:.2f}: that qua {100*pr:.1f}% (BPCER {100*(1-pr):.1f}%), "
+              f"gia qua {100*ps:.1f}% (APCER {100*ps:.1f}%)")
+        lo, hi = max(w["median"] for w in spoof_w), min(w["median"] for w in real_w)
+        if hi > lo:
+            print(f"       mien tach: nguong trong ({lo:.3f}; {hi:.3f}] -> giua khoang {((lo+hi)/2):.3f}, "
+                  f"bien moi phia {(hi-lo)/2:.3f}")
+        else:
+            print(f"       KHONG tach duoc: trung vi gia cao nhat {lo:.3f} >= that thap nhat {hi:.3f}")
+
+        # (ii) ty le khung dat >= Y%
+        for y in FRACTION_YS:
+            rule = lambda w, y=y: w["frac"] >= y
+            pr, ps = _pass_rate(real_w, rule), _pass_rate(spoof_w, rule)
+            print(f"  (ii) ty le khung dat >= {100*y:.0f}%: that qua {100*pr:.1f}% "
+                  f"(BPCER {100*(1-pr):.1f}%), gia qua {100*ps:.1f}% (APCER {100*ps:.1f}%)")
+
+        lo_f = max(w["frac"] for w in spoof_w)
+        hi_f = min(w["frac"] for w in real_w)
+        if hi_f > lo_f:
+            print(f"       mien tach Y trong ({100*lo_f:.0f}%; {100*hi_f:.0f}%] -> "
+                  f"giua khoang {100*(lo_f+hi_f)/2:.0f}%, bien moi phia {100*(hi_f-lo_f)/2:.1f} diem %")
+        else:
+            print(f"       KHONG tach duoc: ty le dat cao nhat cua gia {100*lo_f:.0f}% "
+                  f">= thap nhat cua that {100*hi_f:.0f}%")
+
+        # (iii) ty le dat >= Y% VA do lech chuan <= X
+        feasible = []
+        lo_f_all = max(w["frac"] for w in spoof_w)
+        hi_f_all = min(w["frac"] for w in real_w)
+        y_min = max(0.50, lo_f_all)
+        y_max = min(1.00, hi_f_all)
+        if y_min < y_max and y_min <= 1.0:
+            for y in [y_min + (y_max - y_min) * k / 100.0 for k in range(101)]:
+                spoof_pass_y = [w for w in spoof_w if w["frac"] >= y]
+                if not spoof_pass_y:
+                    continue
+                r_max = max(w["std"] for w in real_w if w["frac"] >= y)
+                s_min = min(w["std"] for w in spoof_pass_y)
+                if r_max < s_min:
+                    feasible.append((y, r_max, s_min))
+        if feasible:
+            y_lo, y_hi = feasible[0][0], feasible[-1][0]
+            y_mid = (y_lo + y_hi) / 2
+            best = min(feasible, key=lambda t: abs(t[0] - y_mid))
+            x_mid = (best[1] + best[2]) / 2
+            rule = lambda w: w["frac"] >= y_mid and w["std"] <= x_mid
+            pr, ps = _pass_rate(real_w, rule), _pass_rate(spoof_w, rule)
+            print(f"  (iii) ty le dat >= {100*y_mid:.0f}% VA do lech <= {x_mid:.4f}: "
+                  f"that qua {100*pr:.1f}% (BPCER {100*(1-pr):.1f}%), gia qua {100*ps:.1f}% "
+                  f"(APCER {100*ps:.1f}%)")
+            print(f"       mien tach Y trong ({100*y_lo:.0f}%; {100*y_hi:.0f}%], "
+                  f"X trong ({best[1]:.4f}; {best[2]:.4f}) -> bien Y moi phia "
+                  f"{100*(y_hi-y_lo)/2:.1f} diem %, bien X moi phia {(best[2]-best[1])/2:.4f}")
+        else:
+            print("  (iii) KHONG co cap (Y, X) nao tach hoan toan hai nhom trong dai da thu.")
+
+    out_path = os.path.join(ROOT, "docs", "reports", "B4_windows.csv")
+    with open(out_path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["nhom", "clip", "L", "cua_so_bat_dau", "t_bat_dau", "t_ket_thuc",
+                         "do_dai_giay", "trung_vi", "ty_le_dat", "do_lech"])
+        for r in rows:
+            writer.writerow([r["nhom"], r["clip"], r["L"], r["start"],
+                             f"{r['t_start']:.3f}", f"{r['t_end']:.3f}", f"{r['span']:.3f}",
+                             f"{r['median']:.6f}", f"{r['frac']:.4f}", f"{r['std']:.6f}"])
+    print("\nDa ghi:", out_path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Do APCER/BPCER cho chong gia mao (B4)")
     parser.add_argument("--real-dir", default=os.path.join(ROOT, "test_data", "real_webcam"))
@@ -180,9 +380,16 @@ def main():
     parser.add_argument("--out", default=os.path.join(ROOT, "docs", "reports", "B4_liveness.csv"))
     parser.add_argument("--clips", action="store_true",
                         help="che do clip: do liveness theo thoi gian tren video ngan")
+    parser.add_argument("--sliding", action="store_true",
+                        help="che do cua so truot: danh gia luat ung vien tren toan bo khung clip")
     parser.add_argument("--clip-root", default=os.path.join(ROOT, "test_data"),
                         help="thu muc goc chua live_video/, spoof_photo/, spoof_video/")
     args = parser.parse_args()
+
+    if args.sliding:
+        root = args.clip_root if os.path.isabs(args.clip_root) else os.path.join(ROOT, args.clip_root)
+        sliding_report(root)
+        return
 
     if args.clips:
         root = args.clip_root if os.path.isabs(args.clip_root) else os.path.join(ROOT, args.clip_root)
