@@ -141,7 +141,7 @@ export default function Dashboard() {
 
         <article className="panel stream-panel">
           <div className="section-heading"><div><p className="eyebrow">CAMERA</p><h2>Xem trực tiếp</h2></div></div>
-          <LiveStream cameraStatus={cameraStatus} onStatusChange={handleStreamStatus} />
+          <LiveStream cameraStatus={cameraStatus} connected={connected} onStatusChange={handleStreamStatus} />
         </article>
       </section>
 

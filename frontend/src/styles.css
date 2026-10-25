@@ -69,7 +69,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid #74c7cf; outline-offs
 .live-stream__controls { justify-content: flex-start; flex-wrap: wrap; }
 .live-stream__controls button:first-child { color: #fff; border-color: var(--accent); background: var(--accent); font-weight: 700; }
 .live-stream p { margin: 0; color: var(--muted); font-size: 13px; }
+.live-stream__frame { position: relative; min-height: 180px; border-radius: 9px; background: #14212b; }
 .live-stream__image { display: block; width: 100%; max-height: 360px; aspect-ratio: 4 / 3; object-fit: contain; border-radius: 9px; background: #14212b; }
+.live-stream__retry { position: absolute; inset: auto 10px 10px; width: fit-content; margin: 0; padding: 7px 10px; border-radius: 8px; color: #fff !important; background: rgb(10 25 34 / 82%); }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
 th { padding: 10px 9px; color: var(--muted); border-bottom: 1px solid var(--line); font-size: 11px; font-weight: 750; white-space: nowrap; }
