@@ -2,7 +2,7 @@
 export const mockRegisterEnabled = import.meta.env.VITE_MOCK_REGISTER === '1'
 export const mockEventsEnabled = import.meta.env.VITE_MOCK_EVENTS === '1'
 
-let mockResidentId = 100
+let mockResidentId = 900000
 
 export async function mockRegisterResident({ full_name, age, apartment_number }) {
   for (let elapsed = 250; elapsed <= 3000; elapsed += 250) {
@@ -39,6 +39,7 @@ export async function mockRegisterResident({ full_name, age, apartment_number })
       apartment_number: apartment_number.trim(),
       status: 'active',
       frames: 18,
+      isMock: true,
     },
   }
 }

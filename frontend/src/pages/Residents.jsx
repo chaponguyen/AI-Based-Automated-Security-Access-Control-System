@@ -1,5 +1,5 @@
 // Agent 3 — Thêm cư dân kèm đăng ký khuôn mặt, danh sách và bật/tắt quyền ra vào.
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import LiveStream from '../components/LiveStream.jsx'
 import RecordProgress from '../components/RecordProgress.jsx'
 import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
@@ -38,6 +38,13 @@ export default function Residents() {
   const [registering, setRegistering] = useState(false)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [residents, setResidents] = useState([])
+  const [mockResidents, setMockResidents] = useState([])
+  const [residentsLoading, setResidentsLoading] = useState(true)
+  const [residentsError, setResidentsError] = useState('')
+  const [search, setSearch] = useState('')
+  const [pendingIds, setPendingIds] = useState(() => new Set())
+  const [listNotice, setListNotice] = useState('')
+  const [listNoticeError, setListNoticeError] = useState(false)
   const recordingAtStartRef = useRef(null)
 
   useEffect(() => {
@@ -50,15 +57,20 @@ export default function Residents() {
     return () => window.clearInterval(timer)
   }, [registering])
 
-  const refreshResidents = async () => {
-    if (mockRegisterEnabled) return
+  const refreshResidents = useCallback(async () => {
+    setResidentsLoading(true)
+    setResidentsError('')
     try {
       const { data } = await api.get('/residents')
       setResidents(Array.isArray(data) ? data : [])
-    } catch {
-      // CP-06 hiển thị lỗi danh sách và cho phép tải lại.
+    } catch (error) {
+      setResidentsError(getApiErrorMessage(error, 'Không tải được danh sách cư dân.'))
+    } finally {
+      setResidentsLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => { void refreshResidents() }, [refreshResidents])
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -95,7 +107,7 @@ export default function Residents() {
       if (mockRegisterEnabled) {
         // TODO: chuyển sang POST thật khi B5 hoàn tất và bỏ cờ VITE_MOCK_REGISTER.
         result = await mockRegisterResident(form)
-        setResidents((items) => [result.data, ...items])
+        setMockResidents((items) => [result.data, ...items])
       } else {
         const body = new FormData()
         body.append('full_name', form.full_name.trim())
@@ -127,6 +139,45 @@ export default function Residents() {
   }
 
   const currentRecording = recording !== recordingAtStartRef.current ? recording : null
+  const filteredResidents = [...mockResidents, ...residents].filter((resident) => {
+    const query = search.trim().toLocaleLowerCase('vi')
+    if (!query) return true
+    return `${resident.full_name || ''} ${resident.apartment_number || ''}`.toLocaleLowerCase('vi').includes(query)
+  })
+
+  const toggleResidentStatus = async (resident) => {
+    if (pendingIds.has(resident.id)) return
+    const previousStatus = resident.status
+    const nextStatus = previousStatus === 'active' ? 'inactive' : 'active'
+    const updateResident = (items, id, status) => items.map((item) => item.id === id ? { ...item, status } : item)
+
+    if (resident.isMock) {
+      // TODO: mock cư dân không có trong backend; PATCH thật áp dụng cho cư dân đã lưu.
+      setMockResidents((items) => updateResident(items, resident.id, nextStatus))
+      setListNotice(nextStatus === 'active' ? 'Đã bật quyền ra vào cho cư dân mô phỏng.' : 'Đã tắt quyền ra vào cho cư dân mô phỏng.')
+      setListNoticeError(false)
+      return
+    }
+
+    setPendingIds((current) => new Set(current).add(resident.id))
+    setResidents((items) => updateResident(items, resident.id, nextStatus))
+    setListNotice('')
+    try {
+      await api.patch(`/residents/${resident.id}/status`, { status: nextStatus })
+      setListNotice(nextStatus === 'active' ? 'Đã bật quyền ra vào.' : 'Đã tắt quyền ra vào.')
+      setListNoticeError(false)
+    } catch (error) {
+      setResidents((items) => updateResident(items, resident.id, previousStatus))
+      setListNotice(getApiErrorMessage(error, 'Không cập nhật được quyền cư dân. Trạng thái đã được hoàn lại.'))
+      setListNoticeError(true)
+    } finally {
+      setPendingIds((current) => {
+        const next = new Set(current)
+        next.delete(resident.id)
+        return next
+      })
+    }
+  }
 
   return (
     <main className="page residents-page">
@@ -213,6 +264,43 @@ export default function Residents() {
             {notice && <p className={noticeError ? 'form-notice form-notice--error' : 'form-notice'} role="status">{notice}</p>}
           </div>
         </form>
+      </section>
+
+      <section className="panel resident-list-panel">
+        <div className="section-heading resident-list-heading">
+          <div><p className="eyebrow">DANH SÁCH</p><h2>Cư dân đã đăng ký</h2></div>
+          <button type="button" onClick={() => void refreshResidents()} disabled={residentsLoading}>Làm mới</button>
+        </div>
+        <label className="resident-search" htmlFor="resident-search">
+          <span>Tìm theo tên hoặc căn hộ</span>
+          <input id="resident-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nhập tên hoặc mã căn hộ" />
+        </label>
+        {residentsLoading && <p className="loading-state" role="status">Đang tải danh sách cư dân…</p>}
+        {!residentsLoading && residentsError && (
+          <div className="error-state" role="alert"><p>{residentsError}</p><button type="button" onClick={() => void refreshResidents()}>Thử lại</button></div>
+        )}
+        {!residentsLoading && !residentsError && filteredResidents.length === 0 && (
+          <p className="empty-state">{search ? 'Không tìm thấy cư dân phù hợp.' : 'Chưa có cư dân nào. Hãy đăng ký cư dân đầu tiên ở biểu mẫu phía trên.'}</p>
+        )}
+        {filteredResidents.length > 0 && (
+          <div className="table-wrap">
+            <table className="resident-table">
+              <thead><tr><th>Mã cư dân</th><th>Họ và tên</th><th>Tuổi</th><th>Căn hộ</th><th>Số khung</th><th>Trạng thái</th><th>Quyền ra vào</th></tr></thead>
+              <tbody>{filteredResidents.map((resident) => (
+                <tr key={`${resident.isMock ? 'mock' : 'resident'}-${resident.id}`}>
+                  <td>{resident.user_code || `USR${String(resident.id).padStart(6, '0')}`}{resident.isMock && <small className="mock-label"> Mô phỏng</small>}</td>
+                  <td>{resident.full_name}</td>
+                  <td>{resident.age}</td>
+                  <td>{resident.apartment_number}</td>
+                  <td>{resident.frames ?? resident.frames_kept ?? 0}</td>
+                  <td><span className={`status-chip ${resident.status === 'active' ? 'status-chip--good' : 'status-chip--warning'}`}>{resident.status === 'active' ? 'Đang hoạt động' : 'Đã tắt'}</span></td>
+                  <td><button type="button" className="button-small" disabled={pendingIds.has(resident.id)} onClick={() => void toggleResidentStatus(resident)}>{pendingIds.has(resident.id) ? 'Đang lưu…' : resident.status === 'active' ? 'Tắt quyền' : 'Bật quyền'}</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+        {listNotice && <p className={listNoticeError ? 'form-notice form-notice--error' : 'form-notice'} role="status">{listNotice}</p>}
       </section>
     </main>
   )
