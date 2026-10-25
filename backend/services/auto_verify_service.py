@@ -1,13 +1,17 @@
-# Agent 2 — Vòng lặp tự động xác thực khuôn mặt chạy nền (B12 CP-01, CP-02)
+# Agent 2 — Vòng lặp tự động xác thực khuôn mặt chạy nền (B12 CP-01, CP-02, CP-03)
 import time
 import logging
 import threading
-from typing import Optional, Dict, Any, List, Tuple
+from datetime import datetime
+from typing import Optional, Dict, Any, List, Tuple, Callable
 import numpy as np
 
 from database.database import SessionLocal
 from services.camera_service import get_camera
 from services import ai_control
+from services.verification_service import verify_face, record_access
+from services.speaker_text import announcement
+from api.ws import broadcast
 from ai.detector import detect_faces
 from ai.quality import frame_quality
 
@@ -61,12 +65,12 @@ class TrackedFace:
         self.created_at: float = now
         self.last_seen_at: float = now
 
-        # Số khung hình liên tiếp đạt chất lượng và kích thước
+        # Số khung hình liên tiếp đạt chất lượng và kích thước (CP-02)
         self.stable_count: int = 1 if is_qualified else 0
         self.is_qualified: bool = is_qualified
         self.ready_to_verify: bool = (self.stable_count >= STABLE_FRAMES_REQUIRED)
 
-        # Trạng thái và lịch sử (chuẩn bị cho CP-03..CP-05)
+        # Lịch sử kết quả xác thực (giữ 5 kết quả gần nhất - CP-03)
         self.verify_history: List[dict] = []
         self.triggered: bool = False
         self.last_triggered_at: Optional[float] = None
@@ -92,6 +96,14 @@ class TrackedFace:
         h = max(0.0, self.bbox[3] - self.bbox[1])
         return min(w, h)
 
+    def to_face_dict(self) -> dict:
+        """Xuất thông tin mặt theo cấu trúc phù hợp cho verify_face."""
+        return {
+            "bbox": [float(v) for v in self.bbox],
+            "kps": self.kps,
+            "score": self.score,
+        }
+
     def to_dict(self) -> Dict[str, Any]:
         """Xuất thông tin trạng thái theo dõi phục vụ debug và báo cáo."""
         return {
@@ -102,6 +114,7 @@ class TrackedFace:
             "is_qualified": self.is_qualified,
             "ready_to_verify": self.ready_to_verify,
             "triggered": self.triggered,
+            "history_len": len(self.verify_history),
         }
 
 
@@ -117,11 +130,15 @@ class AutoVerifyService:
 
     CP-02:
     - Theo dõi khuôn mặt giữa các khung bằng IoU > 0.5.
-    - Điều kiện kích hoạt:
-      + Cạnh ngắn bbox >= MIN_FACE_PX_VERIFY (110 px).
-      + frame_quality đạt (không mờ, không nghiêng quá mức, không quá sáng/tối).
-      + Xuất hiện ổn định liên tiếp STABLE_FRAMES_REQUIRED = 3 khung (~0.5s).
-    - Người đi ngang nhanh hoặc đứng xa sẽ không kích hoạt xác thực.
+    - Điều kiện kích hoạt: bbox >= 110 px, frame_quality đạt, ổn định liên tiếp 3 khung (~0.5s).
+
+    CP-03:
+    - Gọi verify_face cho mỗi mặt đủ điều kiện, lưu 5 kết quả gần nhất.
+    - Granted khi 2 kết quả liên tiếp cùng một cư dân đều đạt.
+    - Cư dân inactive ổn định thì phát sự kiện inactive_user.
+    - Ghi đúng 1 dòng access_logs bằng record_access.
+    - Dựng announcement (display, spoken, kind) cùng thời điểm log.
+    - Phát access_result qua WebSocket broadcast và callback on_event.
     """
 
     def __init__(self) -> None:
@@ -142,6 +159,11 @@ class AutoVerifyService:
         self._tracked_faces: Dict[int, TrackedFace] = {}
         self._next_track_id: int = 1
         self._last_event_at: Optional[float] = None
+        self._on_event_callback: Optional[Callable[[str, dict], None]] = None
+
+    def set_event_callback(self, callback: Optional[Callable[[str, dict], None]]) -> None:
+        """Đăng ký hàm callback nhận sự kiện (phục vụ cắm loa hoặc MQTT sau này)."""
+        self._on_event_callback = callback
 
     def start(self) -> None:
         """Khởi động luồng nền nếu chưa chạy."""
@@ -199,6 +221,21 @@ class AutoVerifyService:
                 "is_paused": ai_control.is_ai_paused(),
                 "last_event_at": self._last_event_at,
             }
+
+    def _emit_event(self, event: str, data: Dict[str, Any]) -> None:
+        """Phát sự kiện độc lập tới WebSocket và callback ngoài."""
+        # 1. Phát qua WebSocket Dashboard
+        try:
+            broadcast(event, data)
+        except Exception as ws_err:
+            logger.warning("Lỗi phát WebSocket broadcast: %s", ws_err)
+
+        # 2. Gọi callback ngoài (loa hoặc MQTT) độc lập
+        if self._on_event_callback is not None:
+            try:
+                self._on_event_callback(event, data)
+            except Exception as cb_err:
+                logger.warning("Lỗi thực thi on_event_callback: %s", cb_err)
 
     def _update_tracker(self, frame: np.ndarray, faces: List[dict], now: float) -> List[TrackedFace]:
         """Cập nhật các luồng theo dõi khuôn mặt bằng IoU > 0.5 và kiểm tra chất lượng.
@@ -268,6 +305,100 @@ class AutoVerifyService:
 
         return ready_tracks
 
+    def _process_verification(self, db, frame: np.ndarray, ready_tracks: List[TrackedFace]) -> None:
+        """Thực hiện xác thực khuôn mặt và phát sự kiện ra quyết định (CP-03)."""
+        for track in ready_tracks:
+            # Nếu track này đã kích hoạt sự kiện cho lần xuất hiện này thì bỏ qua
+            if track.triggered:
+                continue
+
+            # Gọi verify_face (B6) cho khuôn mặt đủ điều kiện
+            face_dict = track.to_face_dict()
+            v_res = verify_face(db, frame, face_dict)
+
+            # Giữ 5 kết quả gần nhất của mỗi mặt đang theo dõi
+            track.verify_history.append(v_res)
+            if len(track.verify_history) > 5:
+                track.verify_history.pop(0)
+
+            # Kiểm tra điều kiện ra quyết định chính thức:
+            is_granted = False
+            is_inactive = False
+            is_stranger = False
+            final_res = None
+
+            # 1. Kiểm tra Granted: Có 2 kết quả liên tiếp cùng một cư dân đều đạt
+            for i in range(len(track.verify_history) - 1):
+                r_a = track.verify_history[i]
+                r_b = track.verify_history[i + 1]
+                u_a = r_a.get("user")
+                u_b = r_b.get("user")
+                u_a_id = u_a.get("id") if isinstance(u_a, dict) else getattr(u_a, "id", None)
+                u_b_id = u_b.get("id") if isinstance(u_b, dict) else getattr(u_b, "id", None)
+
+                if (
+                    r_a.get("decision") == "granted"
+                    and r_b.get("decision") == "granted"
+                    and u_b_id is not None
+                    and u_a_id == u_b_id
+                ):
+                    is_granted = True
+                    final_res = r_b
+                    break
+
+                # 2. Kiểm tra Inactive: 2 kết quả liên tiếp báo inactive_user cùng một người
+                elif (
+                    r_a.get("reason") == "inactive_user"
+                    and r_b.get("reason") == "inactive_user"
+                    and u_b_id is not None
+                    and u_a_id == u_b_id
+                ):
+                    is_inactive = True
+                    final_res = r_b
+                    break
+
+            # 3. Kiểm tra Người lạ (Stranger/Spoof): khi không phải cư dân và có ít nhất 3/5 kết quả denied
+            if not is_granted and not is_inactive:
+                denied_results = [r for r in track.verify_history if r.get("decision") == "denied"]
+                if len(track.verify_history) >= 3 and len(denied_results) >= STRANGER_MIN_DENIED:
+                    is_stranger = True
+                    final_res = track.verify_history[-1]
+
+            if final_res is not None and (is_granted or is_inactive or is_stranger):
+                # Ghi ĐÚNG 1 dòng access_logs bằng record_access
+                log_entry = record_access(db, final_res)
+                log_time = log_entry.timestamp if (log_entry and log_entry.timestamp) else datetime.now()
+
+                # Dựng thông báo announcement (display và spoken) cùng thời điểm với log
+                ann = announcement(final_res, when=log_time)
+
+                # Dựng payload access_result đúng hợp đồng API_CONTRACT
+                access_result_data = {
+                    "user": final_res.get("user"),
+                    "decision": final_res.get("decision"),
+                    "reason": final_res.get("reason"),
+                    "similarity": final_res.get("similarity"),
+                    "box": [int(v) for v in track.bbox],
+                    "timestamp": log_time.isoformat() if hasattr(log_time, "isoformat") else str(log_time),
+                    "announcement": ann,
+                }
+
+                # Phát sự kiện qua WebSocket và callback
+                self._emit_event("access_result", access_result_data)
+                self._last_event_at = time.time()
+
+                # Đánh dấu đã kích hoạt cho track này để không ghi log hay phát lặp lại
+                track.triggered = True
+                track.last_triggered_at = time.time()
+
+                logger.info(
+                    "Đã kích hoạt sự kiện access_result: decision=%s, reason=%s, user=%s (Track %d)",
+                    final_res.get("decision"),
+                    final_res.get("reason"),
+                    final_res.get("user", {}).get("full_name") if final_res.get("user") else "None",
+                    track.track_id,
+                )
+
     def _worker(self) -> None:
         """Vòng lặp thực thi của luồng nền."""
         logger.info("Bắt đầu vòng lặp worker AutoVerifyService.")
@@ -318,21 +449,16 @@ class AutoVerifyService:
                         with self._lock:
                             ready_tracks = self._update_tracker(frame, faces, now)
 
+                        # CP-03: Thực hiện xác thực cho các track đã sẵn sàng
                         if ready_tracks:
-                            for track in ready_tracks:
-                                logger.debug(
-                                    "Track %d sẵn sàng xác thực (stable=%d, edge=%.1f)",
-                                    track.track_id,
-                                    track.stable_count,
-                                    track.short_edge(),
-                                )
+                            with self._lock:
+                                self._process_verification(db, frame, ready_tracks)
                     else:
                         # Khi không có khuôn mặt trong khung: xóa trạng thái theo dõi
                         with self._lock:
                             if self._tracked_faces:
                                 self._tracked_faces.clear()
 
-                    # (Các bước CP-03..CP-05 sẽ tiếp tục phát triển ở đây)
                 finally:
                     db.close()
 
@@ -380,3 +506,7 @@ def status() -> Dict[str, Any]:
 
 def is_running() -> bool:
     return _auto_verify_service.is_running()
+
+
+def set_event_callback(callback: Optional[Callable[[str, dict], None]]) -> None:
+    _auto_verify_service.set_event_callback(callback)
