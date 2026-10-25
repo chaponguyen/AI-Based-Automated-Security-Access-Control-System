@@ -22,7 +22,7 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
 from ai.anti_spoof import check_liveness_sequence, liveness_score  # noqa: E402
-from ai.config import LIVENESS_MIN, LIVENESS_SEQ_MAX_FRAMES  # noqa: E402
+from ai.config import LIVENESS_MIN, LIVENESS_SEQ_FRAMES  # noqa: E402
 from ai.detector import detect_faces  # noqa: E402
 
 EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -120,7 +120,7 @@ def track_clip(path, fps_target=CLIP_FPS):
         last_box = face["bbox"]
         frames.append(frame)
         boxes.append(last_box)
-        if len(frames) > 2 * LIVENESS_SEQ_MAX_FRAMES:   # chỉ giữ lịch sử gần nhất
+        if len(frames) > 2 * LIVENESS_SEQ_FRAMES:   # chỉ giữ lịch sử gần nhất
             frames.pop(0)
             boxes.pop(0)
     cap.release()
@@ -146,13 +146,13 @@ def measure_clips(folders):
                 continue
             if not frames:
                 rows.append({"nhom": nhom, "clip": name, "fps": src_fps, "frames": 0,
-                             "score": None, "motion": None, "std": None,
+                             "score": None, "frac": None, "std": None,
                              "is_real": False, "mode": "no_face"})
                 continue
             is_real, score, detail = check_liveness_sequence(frames, boxes)
             rows.append({"nhom": nhom, "clip": name, "fps": src_fps,
                          "frames": detail.get("frames", len(frames)),
-                         "score": score, "motion": detail.get("motion"),
+                         "score": score, "frac": detail.get("frac"),
                          "std": detail.get("std"), "is_real": is_real,
                          "mode": detail.get("mode", "?")})
     return rows
@@ -160,15 +160,15 @@ def measure_clips(folders):
 
 def print_clips(rows):
     print("\nKiem tra song theo thoi gian tren clip:")
-    print("| Nhom | Clip | fps | So khung | Diem (trung vi) | Chuyen dong | Do lech | Ket luan |")
+    print("| Nhom | Clip | fps | So khung | Diem (trung vi) | Ty le dat | Do lech | Ket luan |")
     print("|---|---|---:|---:|---:|---:|---:|---|")
     for r in rows:
         score = "-" if r["score"] is None else f"{r['score']:.4f}"
-        motion = "-" if r["motion"] is None else f"{r['motion']:.3f}"
+        frac = "-" if r["frac"] is None else f"{100 * r['frac']:.0f}%"
         std = "-" if r["std"] is None else f"{r['std']:.5f}"
         ket = "that" if r["is_real"] else "chan"
         print(f"| {r['nhom']} | {r['clip']} | {r['fps']:.0f} | {r['frames']} | "
-              f"{score} | {motion} | {std} | {ket} ({r['mode']}) |")
+              f"{score} | {frac} | {std} | {ket} ({r['mode']}) |")
 
 
 # --- Cửa sổ trượt: đánh giá luật ứng viên trên toàn bộ khung của clip (B4 CP-06) ---
@@ -501,12 +501,12 @@ def main():
         out_path = os.path.join(ROOT, "docs", "reports", "B4_clips.csv")
         with open(out_path, "w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
-            writer.writerow(["nhom", "clip", "fps", "so_khung", "score", "chuyen_dong",
+            writer.writerow(["nhom", "clip", "fps", "so_khung", "score", "ty_le_dat",
                              "do_lech", "is_real", "mode"])
             for r in rows:
                 writer.writerow([r["nhom"], r["clip"], f"{r['fps']:.0f}", r["frames"],
                                  "" if r["score"] is None else f"{r['score']:.6f}",
-                                 "" if r["motion"] is None else f"{r['motion']:.4f}",
+                                 "" if r["frac"] is None else f"{r['frac']:.4f}",
                                  "" if r["std"] is None else f"{r['std']:.6f}",
                                  int(bool(r["is_real"])), r["mode"]])
         print("Da ghi:", out_path)
