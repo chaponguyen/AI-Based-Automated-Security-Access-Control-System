@@ -17,7 +17,13 @@ ai_running = False
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global ai_running
-    logger.info("Bắt đầu khởi động hệ thống AI Security Access Control...")
+    # (0) Lưu main event loop cho WebSocket broadcast từ luồng nền
+    try:
+        import asyncio
+        from api import ws
+        ws.set_event_loop(asyncio.get_running_loop())
+    except Exception as e:
+        logger.warning("Không thể gán event loop cho WebSocket: %s", e)
 
     # (1) Khởi động camera và luồng nền (LocalCamera)
     camera = None

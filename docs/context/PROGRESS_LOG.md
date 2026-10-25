@@ -22,3 +22,4 @@
 - 2026-10-25 08:22 [B7] CP-01 (backend/api/residents.py): Implement route GET /api/residents truy van danh sach cu dan gom so luong frames embedding (outerjoin, groupby, khong N+1)
 - 2026-10-25 08:24 [B7] CP-02 (backend/api/residents.py): Implement route PATCH /api/residents/{id}/status cap nhat status active/inactive, kiem tra 404 va validation 422
 - 2026-10-25 08:25 [B7] CP-03 (backend/api/logs.py): Implement route GET /api/logs voi day du bo loc decision, q (khong phan biet hoa thuong), from/to (ISO 8601), limit va sap xep timestamp desc
+- 2026-10-25 08:27 [B7] CP-04 (backend/api/ws.py; backend/main.py): Implement endpoint WS /ws/dashboard voi ConnectionManager, gui camera_status khi ket noi, ping dinh ky 20s va ham broadcast ho tro goi thread-safe tu luong nen
