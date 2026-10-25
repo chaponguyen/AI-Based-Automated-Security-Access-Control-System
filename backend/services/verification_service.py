@@ -18,9 +18,57 @@ from ai.embedder import get_embedding
 from ai.matcher import best_match
 from services.decision import decide
 from services import gallery_cache
+from database.models import AccessLog
 
 
 logger = logging.getLogger(__name__)
+
+
+def record_access(db, result: dict) -> Optional[AccessLog]:
+    """Ghi một dòng vào bảng access_logs cho mỗi quyết định thật (granted hoặc denied).
+
+    CP-04:
+    - KHÔNG ghi log khi reason == 'no_face' (không có khuôn mặt, tránh làm rác CSDL).
+    - user_id lấy từ result['user']['id'] nếu nhận diện được cư dân, ngược lại là None.
+    - Dùng chung cho cả endpoint POST /api/verify và luồng tự động xác thực B12.
+
+    Args:
+        db: SQLAlchemy session
+        result: dict kết quả trả về từ verify_face hoặc verify_image
+
+    Returns:
+        AccessLog đã lưu vào CSDL, hoặc None nếu là lượt không có mặt (no_face)
+    """
+    if not result or result.get("reason") == "no_face":
+        return None
+
+    user = result.get("user")
+    user_id = None
+    if user:
+        user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+
+    similarity = result.get("similarity")
+    if similarity is not None:
+        similarity = float(similarity)
+
+    liveness = result.get("liveness")
+    if liveness is not None:
+        liveness = bool(liveness)
+
+    decision = result.get("decision")
+    reason = result.get("reason")
+
+    log_entry = AccessLog(
+        user_id=user_id,
+        similarity=similarity,
+        liveness=liveness,
+        decision=decision,
+        reason=reason,
+    )
+    db.add(log_entry)
+    db.commit()
+    db.refresh(log_entry)
+    return log_entry
 
 
 def verify_face(db, image_bgr: np.ndarray, face: dict) -> dict:

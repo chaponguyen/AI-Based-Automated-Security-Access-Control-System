@@ -1,13 +1,18 @@
-# Agent 2 — Quyết định cấp quyền ra vào (B6 CP-01)
-# Ngưỡng cosine similarity mặc định (có thể tinh chỉnh theo thực nghiệm FAR/FRR)
-DEFAULT_SIMILARITY_THRESHOLD = 0.50
+# Ngưỡng cosine similarity lấy từ config AI (A1 hiệu chỉnh)
+try:
+    from ai.config import SIM_THRESHOLD
+except (ImportError, AttributeError):
+    try:
+        from ai.matcher import SIM_THRESHOLD
+    except (ImportError, AttributeError):
+        SIM_THRESHOLD = 0.50
 
 
 def decide(
     similarity: float,
     liveness: bool,
     user: any,
-    threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+    threshold: float = SIM_THRESHOLD,
 ) -> tuple[str, str]:
     """Quyết định cấp quyền hoặc từ chối ra vào dựa trên kết quả AI.
 
