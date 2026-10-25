@@ -23,3 +23,4 @@
 - 2026-10-25 08:24 [B7] CP-02 (backend/api/residents.py): Implement route PATCH /api/residents/{id}/status cap nhat status active/inactive, kiem tra 404 va validation 422
 - 2026-10-25 08:25 [B7] CP-03 (backend/api/logs.py): Implement route GET /api/logs voi day du bo loc decision, q (khong phan biet hoa thuong), from/to (ISO 8601), limit va sap xep timestamp desc
 - 2026-10-25 08:27 [B7] CP-04 (backend/api/ws.py; backend/main.py): Implement endpoint WS /ws/dashboard voi ConnectionManager, gui camera_status khi ket noi, ping dinh ky 20s va ham broadcast ho tro goi thread-safe tu luong nen
+- 2026-10-25 09:00 [B6] CP-01 (backend/services/decision.py): Implement ham thuan decide(similarity, liveness, user, threshold=0.5) tra (decision, reason) theo thu tu kiem tra liveness, user/threshold, status
