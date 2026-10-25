@@ -1,6 +1,10 @@
 // Các cờ mock chỉ bật khi Vite nhận giá trị "1" trong file môi trường.
 export const mockRegisterEnabled = import.meta.env.VITE_MOCK_REGISTER === '1'
 export const mockEventsEnabled = import.meta.env.VITE_MOCK_EVENTS === '1'
+const configuredPrepareSeconds = Number(import.meta.env.VITE_REGISTER_PREPARE_SECONDS)
+export const PREPARE_SECONDS = Number.isFinite(configuredPrepareSeconds) && configuredPrepareSeconds >= 1
+  ? Math.floor(configuredPrepareSeconds)
+  : 5
 
 let mockResidentId = 900000
 

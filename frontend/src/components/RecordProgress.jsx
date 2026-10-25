@@ -7,7 +7,7 @@ export default function RecordProgress({ elapsedMs = 0, recording }) {
   return (
     <section className="record-progress" aria-live="polite">
       <div className="record-progress__meta">
-        <strong>Đang quay khuôn mặt · {((duration - currentMs) / 1000).toFixed(1)} giây</strong>
+        <strong>Đang quay, giữ yên mặt · {((duration - currentMs) / 1000).toFixed(1)} giây</strong>
         <span>Thu được {recording?.got ?? 0} khung · giữ lại {recording?.kept ?? 0}</span>
       </div>
       <div className="progress-track" role="progressbar" aria-label="Tiến độ ghi hình" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}>

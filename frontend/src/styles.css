@@ -84,6 +84,17 @@ tbody tr:last-child td { border-bottom: 0; }
 .progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s linear; }
 .speaker-panel button { margin-top: 5px; }
 .resident-form { display: grid; gap: 14px; }
+.resident-registration-layout { display: grid; grid-template-columns: minmax(290px, .9fr) minmax(0, 1.4fr); gap: 14px; align-items: start; }
+.resident-preview-panel { display: grid; gap: 12px; }
+.live-stream__frame--off { display: grid; place-items: center; overflow: hidden; background: radial-gradient(ellipse at center, #354b58 0%, #14212b 74%); }
+.live-stream__frame--off p { position: absolute; inset: auto 8px 9px; width: fit-content; padding: 6px 8px; border-radius: 7px; color: #fff; background: rgb(10 25 34 / 75%); }
+.resident-face-guide { position: absolute; inset: 9% 25% 9%; display: grid; place-items: center; pointer-events: none; }
+.resident-face-guide span { display: block; width: 100%; height: 100%; border: 2px dashed #d4f5ff; border-radius: 50% / 43%; box-shadow: 0 0 0 999px rgb(9 20 28 / 15%), 0 0 18px rgb(178 235 255 / 28%); }
+.resident-preview-caption { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.prepare-countdown { display: flex; align-items: center; gap: 16px; padding: 13px 15px; border: 1px solid #c4e3e6; border-radius: 11px; background: #f0f9fa; }
+.prepare-countdown > strong { min-width: 58px; color: var(--accent); font-size: 48px; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
+.prepare-countdown > div { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.prepare-countdown p { margin: 0; color: #28545b; font-size: 14px; font-weight: 650; }
 .resident-form__grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(120px, .55fr) minmax(0, 1fr); gap: 14px; }
 .field { display: grid; align-content: start; gap: 7px; color: #344653; font-size: 13px; font-weight: 700; }
 .field b { color: var(--bad); }
@@ -151,6 +162,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-grid, .dashboard-grid--bottom { grid-template-columns: 1fr; }
   .verify-grid { grid-template-columns: 1fr; }
+  .resident-registration-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   #root { width: min(100% - 24px, 1180px); padding-top: 12px; }
@@ -167,4 +179,6 @@ tbody tr:last-child td { border-bottom: 0; }
   .panel { padding: 14px; }
   .recording-preview__label { align-items: flex-start; flex-direction: column; }
   .resident-form__grid { grid-template-columns: 1fr; }
+  .prepare-countdown { align-items: flex-start; }
+  .prepare-countdown > strong { min-width: 44px; font-size: 40px; }
 }

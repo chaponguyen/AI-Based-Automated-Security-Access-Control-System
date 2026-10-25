@@ -2,7 +2,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../services/api.js'
 
-export default function LiveStream({ cameraStatus, connected, onStatusChange, startOnMount = false, overlay }) {
+export default function LiveStream({
+  cameraStatus,
+  connected,
+  onStatusChange,
+  startOnMount = false,
+  overlay,
+  startLabel = 'Xem trực tiếp',
+  stopLabel = 'Tắt xem trực tiếp',
+  disabled = false,
+}) {
   const [enabled, setEnabled] = useState(false)
   const [streamTimestamp, setStreamTimestamp] = useState(0)
   const [retrying, setRetrying] = useState(false)
@@ -125,8 +134,8 @@ export default function LiveStream({ cameraStatus, connected, onStatusChange, st
   return (
     <section className="live-stream" aria-label="Camera trực tiếp">
       <div className="live-stream__controls">
-        <button type="button" onClick={enabled ? stopStream : startStream}>
-          {enabled ? 'Tắt xem trực tiếp' : 'Xem trực tiếp'}
+        <button type="button" disabled={disabled} onClick={enabled ? stopStream : startStream}>
+          {enabled ? stopLabel : startLabel}
         </button>
       </div>
 
@@ -146,8 +155,20 @@ export default function LiveStream({ cameraStatus, connected, onStatusChange, st
         </div>
       )}
 
-      {!enabled && <p>Stream đang tắt, AI vẫn chạy.</p>}
-      {enabled && cameraUnavailable && <p>Camera chưa sẵn sàng.</p>}
+      {!enabled && overlay && (
+        <div className="live-stream__frame live-stream__frame--off" style={{ aspectRatio }}>
+          {overlay}
+          <p>Stream đang tắt, AI vẫn chạy.</p>
+        </div>
+      )}
+      {!enabled && !overlay && <p>Stream đang tắt, AI vẫn chạy.</p>}
+      {enabled && cameraUnavailable && overlay && (
+        <div className="live-stream__frame live-stream__frame--off" style={{ aspectRatio }}>
+          {overlay}
+          <p>Camera chưa sẵn sàng.</p>
+        </div>
+      )}
+      {enabled && cameraUnavailable && !overlay && <p>Camera chưa sẵn sàng.</p>}
       {enabled && cameraUnavailable && retrying && <p role="status">Đang kết nối lại camera...</p>}
     </section>
   )
