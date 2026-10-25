@@ -25,3 +25,4 @@
 - 2026-10-25 08:27 [B7] CP-04 (backend/api/ws.py; backend/main.py): Implement endpoint WS /ws/dashboard voi ConnectionManager, gui camera_status khi ket noi, ping dinh ky 20s va ham broadcast ho tro goi thread-safe tu luong nen
 - 2026-10-25 09:00 [B6] CP-01 (backend/services/decision.py): Implement ham thuan decide(similarity, liveness, user, threshold=0.5) tra (decision, reason) theo thu tu kiem tra liveness, user/threshold, status
 - 2026-10-25 09:02 [B14] CP-02 (backend/services/speaker_text.py): Implement ham so_sang_chu(n) doi so nguyen 0 den 999 sang chu tieng Viet theo chuan ngu phap (nam/lam, mot/muoi mot/hai muoi mot, linh)
+- 2026-10-25 09:03 [B14] CP-03 (backend/services/speaker_text.py): Implement ham doc_gio(dt) doi datetime sang chu tieng Viet (gio dung, linh nam phut, ba muoi lam phut)
