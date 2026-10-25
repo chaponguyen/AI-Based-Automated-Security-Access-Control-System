@@ -8,6 +8,26 @@ export const PREPARE_SECONDS = Number.isFinite(configuredPrepareSeconds) && conf
 
 let mockResidentId = 900000
 
+export async function mockRegistrationPrecheck(fullName) {
+  await Promise.resolve()
+  const name = String(fullName || '').trim()
+  if (!name.startsWith('DUP_')) return { state: 'new', exists: false, user: null, similarity: null, box: null }
+
+  return {
+    state: 'exists',
+    exists: true,
+    user: {
+      id: 1,
+      user_code: 'USR000001',
+      full_name: name,
+      apartment_number: 'A-1203',
+      status: 'active',
+    },
+    similarity: 0.98,
+    box: null,
+  }
+}
+
 export async function mockRegisterResident({ full_name, age, apartment_number }) {
   for (let elapsed = 250; elapsed <= 3000; elapsed += 250) {
     await new Promise((resolve) => window.setTimeout(resolve, 250))

@@ -4,7 +4,7 @@ import LiveStream from '../components/LiveStream.jsx'
 import RecordProgress from '../components/RecordProgress.jsx'
 import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
 import { api, getApiErrorMessage } from '../services/api.js'
-import { mockRegisterEnabled, mockRegisterResident, PREPARE_SECONDS } from '../services/mock.js'
+import { mockRegisterEnabled, mockRegisterResident, mockRegistrationPrecheck, PREPARE_SECONDS } from '../services/mock.js'
 
 const emptyForm = { full_name: '', age: '', apartment_number: '' }
 
@@ -36,6 +36,10 @@ export default function Residents() {
   const [notice, setNotice] = useState('')
   const [noticeError, setNoticeError] = useState(false)
   const [registrationPhase, setRegistrationPhase] = useState('idle')
+  const [previewEnabled, setPreviewEnabled] = useState(false)
+  const [precheckResult, setPrecheckResult] = useState(null)
+  const [precheckError, setPrecheckError] = useState(false)
+  const [duplicateResident, setDuplicateResident] = useState(null)
   const [countdown, setCountdown] = useState(PREPARE_SECONDS)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [residents, setResidents] = useState([])
@@ -49,8 +53,143 @@ export default function Residents() {
   const registrationPhaseRef = useRef('idle')
   const registrationRequestStartedRef = useRef(false)
   const prepareTimerRef = useRef(null)
+  const precheckPromiseRef = useRef(null)
+  const precheckAbortRef = useRef(null)
+  const previewEnabledRef = useRef(false)
+  const previousPrecheckExistsRef = useRef(false)
+  const consecutiveExistsRef = useRef(0)
+  const duplicateModalShownRef = useRef(false)
+  const duplicateModalOpenRef = useRef(false)
+  const duplicateDialogButtonRef = useRef(null)
+  const duplicateDialogReturnFocusRef = useRef(null)
   const countdownRef = useRef(PREPARE_SECONDS)
   const recordingAtStartRef = useRef(null)
+  const formRef = useRef(form)
+  formRef.current = form
+
+  const abortPrecheck = () => {
+    precheckAbortRef.current?.abort()
+  }
+
+  const openDuplicateDialog = (user) => {
+    if (duplicateModalOpenRef.current) return
+    duplicateDialogReturnFocusRef.current = document.activeElement
+    duplicateModalOpenRef.current = true
+    duplicateModalShownRef.current = true
+    setDuplicateResident(user || {})
+    if (registrationPhaseRef.current === 'checking') {
+      registrationPhaseRef.current = 'idle'
+      setRegistrationPhase('idle')
+    }
+  }
+
+  async function confirmExistsAfterCurrentRequest() {
+    const inFlight = precheckPromiseRef.current
+    if (inFlight) await inFlight
+    if (!duplicateModalOpenRef.current) await runPrecheck()
+  }
+
+  const acceptPrecheck = (data, { confirmExists = true } = {}) => {
+    setPrecheckResult(data)
+    setPrecheckError(false)
+    if (data.state === 'exists') {
+      consecutiveExistsRef.current = previousPrecheckExistsRef.current
+        ? consecutiveExistsRef.current + 1
+        : 1
+      previousPrecheckExistsRef.current = true
+      if (registrationPhaseRef.current === 'preparing') {
+        if (prepareTimerRef.current !== null) window.clearInterval(prepareTimerRef.current)
+        prepareTimerRef.current = null
+        registrationPhaseRef.current = 'checking'
+        setRegistrationPhase('checking')
+        setCountdown(PREPARE_SECONDS)
+        countdownRef.current = PREPARE_SECONDS
+        setNotice('Đã tìm thấy cư dân trùng. Đã hủy bước chuẩn bị và chưa gửi yêu cầu đăng ký.')
+        setNoticeError(true)
+      }
+      if (consecutiveExistsRef.current >= 2 && !duplicateModalShownRef.current) {
+        if (duplicateModalOpenRef.current) duplicateModalShownRef.current = true
+        else openDuplicateDialog(data.user)
+      } else if (confirmExists && consecutiveExistsRef.current === 1) {
+        void confirmExistsAfterCurrentRequest()
+      }
+      return
+    }
+
+    previousPrecheckExistsRef.current = false
+    consecutiveExistsRef.current = 0
+    duplicateModalShownRef.current = false
+  }
+
+  async function runPrecheck() {
+    if (precheckPromiseRef.current) return precheckPromiseRef.current
+
+    const controller = new AbortController()
+    precheckAbortRef.current = controller
+    let request
+    request = (async () => {
+      try {
+        const data = mockRegisterEnabled
+          ? await mockRegistrationPrecheck(formRef.current.full_name)
+          : (await api.get('/registration/precheck', { signal: controller.signal })).data
+        if (controller.signal.aborted) return null
+        if (!['no_face', 'multiple_faces', 'low_quality', 'new', 'exists'].includes(data?.state)) {
+          throw new Error('Phản hồi precheck không hợp lệ.')
+        }
+        acceptPrecheck(data)
+        return data
+      } catch (error) {
+        if (controller.signal.aborted || error.code === 'ERR_CANCELED') return null
+        setPrecheckError(true)
+        return null
+      } finally {
+        if (precheckAbortRef.current === controller) precheckAbortRef.current = null
+        if (precheckPromiseRef.current === request) precheckPromiseRef.current = null
+      }
+    })()
+    precheckPromiseRef.current = request
+    return request
+  }
+
+  const handlePreviewStatusChange = useCallback(({ enabled }) => {
+    setPreviewEnabled(enabled)
+    if (previewEnabledRef.current && !enabled) abortPrecheck()
+    previewEnabledRef.current = enabled
+  }, [])
+
+  const closeDuplicateDialog = () => {
+    duplicateModalOpenRef.current = false
+    setDuplicateResident(null)
+    window.requestAnimationFrame(() => duplicateDialogReturnFocusRef.current?.focus?.())
+  }
+
+  useEffect(() => {
+    if (!duplicateResident) return undefined
+    duplicateDialogButtonRef.current?.focus()
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') closeDuplicateDialog()
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        duplicateDialogButtonRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [duplicateResident])
+
+  useEffect(() => () => abortPrecheck(), [])
+
+  useEffect(() => {
+    const canPoll = previewEnabled || registrationPhase === 'preparing'
+    if (!canPoll || ['validating', 'recording'].includes(registrationPhase)) return undefined
+
+    void runPrecheck()
+    const timer = window.setInterval(() => {
+      if (['validating', 'recording'].includes(registrationPhaseRef.current)) return
+      void runPrecheck()
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [previewEnabled, registrationPhase])
 
   useEffect(() => {
     if (registrationPhase !== 'recording') {
@@ -76,8 +215,32 @@ export default function Residents() {
       if (remaining === 0) {
         window.clearInterval(timer)
         if (prepareTimerRef.current === timer) prepareTimerRef.current = null
-        registrationPhaseRef.current = 'recording'
-        setRegistrationPhase('recording')
+        registrationPhaseRef.current = 'validating'
+        setRegistrationPhase('validating')
+        void (async () => {
+          let result = await runPrecheck()
+          if (registrationPhaseRef.current !== 'validating') return
+          if (!result) {
+            registrationPhaseRef.current = 'idle'
+            setRegistrationPhase('idle')
+            setNotice('Không kiểm tra được khuôn mặt trước khi đăng ký. Vui lòng thử lại.')
+            setNoticeError(true)
+            return
+          }
+          if (result.state === 'exists') {
+            result = await runPrecheck()
+            if (registrationPhaseRef.current !== 'validating') return
+            if (!result || result.state === 'exists') {
+              registrationPhaseRef.current = 'idle'
+              setRegistrationPhase('idle')
+              setNotice('Đã tìm thấy cư dân trùng. Chưa gửi yêu cầu đăng ký.')
+              setNoticeError(true)
+              return
+            }
+          }
+          registrationPhaseRef.current = 'recording'
+          setRegistrationPhase('recording')
+        })()
       }
     }, 1000)
     prepareTimerRef.current = timer
@@ -111,16 +274,34 @@ export default function Residents() {
     setNoticeError(false)
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
-    if (registrationPhaseRef.current !== 'idle') return
+    if (registrationPhaseRef.current !== 'idle' || precheckResult?.state === 'exists') return
     setSubmitted(true)
     const nextErrors = validateResidentForm(form)
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length === 0) {
-      if (prepareTimerRef.current !== null) {
-        window.clearInterval(prepareTimerRef.current)
-        prepareTimerRef.current = null
+      registrationPhaseRef.current = 'checking'
+      setRegistrationPhase('checking')
+      let result = await runPrecheck()
+      if (registrationPhaseRef.current !== 'checking') return
+      if (!result) {
+        registrationPhaseRef.current = 'idle'
+        setRegistrationPhase('idle')
+        setNotice('Không kiểm tra được khuôn mặt. Vui lòng thử lại trước khi đăng ký.')
+        setNoticeError(true)
+        return
+      }
+      if (result.state === 'exists') {
+        result = await runPrecheck()
+        if (registrationPhaseRef.current !== 'checking') return
+        if (!result || result.state === 'exists') {
+          registrationPhaseRef.current = 'idle'
+          setRegistrationPhase('idle')
+          setNotice('Đã tìm thấy cư dân trùng. Không bắt đầu đếm ngược và chưa gửi yêu cầu đăng ký.')
+          setNoticeError(true)
+          return
+        }
       }
       registrationPhaseRef.current = 'preparing'
       registrationRequestStartedRef.current = false
@@ -181,6 +362,12 @@ export default function Residents() {
       const detail = error.response?.data || {}
       if (status === 422 && detail.reason === 'not_enough_quality_frames') {
         setNotice(`Chỉ thu được ${detail.good ?? 0}/${detail.required ?? 15} khung đạt, hãy nhìn thẳng và đủ sáng rồi thử lại.`)
+      } else if (status === 409 && detail.reason === 'already_registered') {
+        acceptPrecheck({ state: 'exists', exists: true, user: detail.user, similarity: detail.similarity, box: null }, { confirmExists: false })
+        consecutiveExistsRef.current = 2
+        previousPrecheckExistsRef.current = true
+        openDuplicateDialog(detail.user)
+        setNotice('Cư dân này đã tồn tại. Không lưu đăng ký trùng.')
       } else if (status === 409) {
         setNotice('Đang có lượt đăng ký khác. Vui lòng đợi rồi thử lại.')
       } else {
@@ -203,6 +390,18 @@ export default function Residents() {
 
   const currentRecording = recording !== recordingAtStartRef.current ? recording : null
   const registrationBusy = registrationPhase !== 'idle'
+  const registrationBlockedByDuplicate = precheckResult?.state === 'exists'
+  const precheckStatusText = precheckError
+    ? 'Không kiểm tra được khuôn mặt'
+    : precheckResult?.state === 'multiple_faces'
+      ? 'Có nhiều khuôn mặt'
+      : precheckResult?.state === 'low_quality'
+        ? 'Ảnh chưa đủ rõ'
+        : precheckResult?.state === 'exists'
+          ? `Đã tồn tại: ${precheckResult.user?.full_name || 'cư dân'}`
+          : precheckResult?.state === 'new'
+            ? 'Người mới, có thể đăng ký'
+            : 'Đang tìm khuôn mặt...'
   const filteredResidents = [...mockResidents, ...residents].filter((resident) => {
     const query = search.trim().toLocaleLowerCase('vi')
     if (!query) return true
@@ -261,11 +460,17 @@ export default function Residents() {
           <LiveStream
             cameraStatus={cameraStatus}
             connected={connected}
+            onStatusChange={handlePreviewStatusChange}
             startOnMount={registrationBusy}
             disabled={registrationBusy}
             startLabel="Bật xem trước để căn mặt"
             stopLabel="Tắt xem trước"
           />
+          {(previewEnabled || ['checking', 'preparing', 'validating'].includes(registrationPhase)) && (
+            <p className={`registration-precheck-chip${registrationBlockedByDuplicate ? ' registration-precheck-chip--exists' : ''}${precheckError ? ' registration-precheck-chip--error' : ''}`} role="status" aria-live="polite">
+              {precheckStatusText}
+            </p>
+          )}
           <p className="resident-preview-caption">Ngồi cách camera khoảng nửa mét, nhìn thẳng, đủ sáng, chỉ một người trong khung.</p>
         </section>
 
@@ -346,9 +551,10 @@ export default function Residents() {
             </div>
           )}
           <div className="resident-form__actions">
-            <button className="button button--primary" type="submit" disabled={registrationBusy}>
-              {registrationPhase === 'preparing' ? 'Đang chuẩn bị…' : registrationPhase === 'recording' ? 'Đang quay 3 giây…' : 'Quay 3 giây và lưu cư dân'}
+            <button className="button button--primary" type="submit" disabled={registrationBusy || registrationBlockedByDuplicate} aria-describedby={registrationBlockedByDuplicate ? 'duplicate-registration-reason' : undefined}>
+              {registrationPhase === 'checking' || registrationPhase === 'validating' ? 'Đang kiểm tra khuôn mặt…' : registrationPhase === 'preparing' ? 'Đang chuẩn bị…' : registrationPhase === 'recording' ? 'Đang quay 3 giây…' : 'Quay 3 giây và lưu cư dân'}
             </button>
+            {registrationBlockedByDuplicate && <p id="duplicate-registration-reason" className="form-notice form-notice--error">Không thể đăng ký vì khuôn mặt đã tồn tại.</p>}
             {notice && <p className={noticeError ? 'form-notice form-notice--error' : 'form-notice'} role="status">{notice}</p>}
           </div>
         </form>
@@ -391,6 +597,20 @@ export default function Residents() {
         )}
         {listNotice && <p className={listNoticeError ? 'form-notice form-notice--error' : 'form-notice'} role="status">{listNotice}</p>}
       </section>
+
+      {duplicateResident && (
+        <div className="resident-modal-backdrop">
+          <section className="resident-duplicate-modal" role="dialog" aria-modal="true" aria-labelledby="resident-duplicate-title" aria-describedby="resident-duplicate-details">
+            <h2 id="resident-duplicate-title">Cư dân này đã tồn tại</h2>
+            <div id="resident-duplicate-details" className="resident-duplicate-details">
+              <p><strong>{duplicateResident.full_name || 'Không rõ tên'}</strong>{duplicateResident.status === 'inactive' && ' (đang bị tắt quyền)'}</p>
+              <p>Mã cư dân: {duplicateResident.user_code || '—'}</p>
+              <p>Căn hộ: {duplicateResident.apartment_number || '—'}</p>
+            </div>
+            <button ref={duplicateDialogButtonRef} type="button" className="button button--primary" onClick={closeDuplicateDialog}>Đã hiểu</button>
+          </section>
+        </div>
+      )}
     </main>
   )
 }

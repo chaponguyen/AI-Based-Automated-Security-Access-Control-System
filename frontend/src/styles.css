@@ -86,9 +86,16 @@ tbody tr:last-child td { border-bottom: 0; }
 .resident-form { display: grid; gap: 14px; }
 .resident-registration-layout { display: grid; grid-template-columns: minmax(290px, .9fr) minmax(0, 1.4fr); gap: 14px; align-items: start; }
 .resident-preview-panel { display: grid; gap: 12px; }
+.registration-precheck-chip { width: fit-content; margin: 0; padding: 6px 10px; border-radius: 999px; color: #435563; background: #edf1f3; font-size: 12px; font-weight: 700; }
+.registration-precheck-chip--exists, .registration-precheck-chip--error { color: var(--bad); background: var(--bad-bg); }
 .live-stream__frame--off { display: grid; place-items: center; overflow: hidden; background: radial-gradient(ellipse at center, #354b58 0%, #14212b 74%); }
 .live-stream__frame--off p { position: absolute; inset: auto 8px 9px; width: fit-content; padding: 6px 8px; border-radius: 7px; color: #fff; background: rgb(10 25 34 / 75%); }
 .resident-preview-caption { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.resident-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(13 26 35 / 58%); }
+.resident-duplicate-modal { width: min(100%, 430px); padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 18px 60px rgb(0 0 0 / 24%); }
+.resident-duplicate-modal h2 { margin: 0 0 14px; font-size: 20px; }
+.resident-duplicate-details { margin-bottom: 18px; color: #344653; font-size: 14px; line-height: 1.55; }
+.resident-duplicate-details p { margin: 5px 0; }
 .prepare-countdown { display: flex; align-items: center; gap: 16px; padding: 13px 15px; border: 1px solid #c4e3e6; border-radius: 11px; background: #f0f9fa; }
 .prepare-countdown > strong { min-width: 58px; color: var(--accent); font-size: 48px; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
 .prepare-countdown > div { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
