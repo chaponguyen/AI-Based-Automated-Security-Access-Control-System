@@ -238,19 +238,47 @@ class AutoVerifyService:
         with self._lock:
             return self._running and self._thread is not None and self._thread.is_alive()
 
+    def get_ai_status_payload(self) -> Dict[str, Any]:
+        """Dựng payload ai_status chuẩn hợp đồng API_CONTRACT (CP-06)."""
+        with self._lock:
+            tracking_count = len(self._tracked_faces)
+            is_paused = ai_control.is_ai_paused()
+
+            if is_paused:
+                state_str = "tạm dừng do đăng ký"
+            elif tracking_count > 0:
+                state_str = "đang theo dõi"
+            else:
+                state_str = "đang chờ"
+
+            last_event_formatted = None
+            if self._last_event_at is not None:
+                last_event_formatted = datetime.fromtimestamp(self._last_event_at).isoformat()
+
+            return {
+                "running": self._running,
+                "fps": round(self._actual_fps, 1),
+                "tracking": tracking_count,
+                "last_event_at": last_event_formatted,
+                "state": state_str,
+            }
+
+    def broadcast_ai_status(self) -> None:
+        """Phát sự kiện ai_status qua broadcast WebSocket Dashboard (CP-06)."""
+        payload = self.get_ai_status_payload()
+        self._emit_event("ai_status", payload)
+
     def status(self) -> Dict[str, Any]:
         """Trả về thông tin trạng thái hoạt động của dịch vụ."""
         with self._lock:
             tracks_info = [t.to_dict() for t in self._tracked_faces.values()]
-            return {
-                "running": self._running,
-                "fps": round(self._actual_fps, 2),
-                "is_idle": self._is_idle,
-                "tracking": len(self._tracked_faces),
+            payload = self.get_ai_status_payload()
+            payload.update({
                 "tracks": tracks_info,
+                "is_idle": self._is_idle,
                 "is_paused": ai_control.is_ai_paused(),
-                "last_event_at": self._last_event_at,
-            }
+            })
+            return payload
 
     def _emit_event(self, event: str, data: Dict[str, Any]) -> None:
         """Phát sự kiện độc lập tới WebSocket và callback ngoài."""
@@ -533,17 +561,42 @@ class AutoVerifyService:
         except Exception as cache_err:
             logger.debug("Tự động nạp GalleryCache trong worker: %s", cache_err)
 
+        # Quản lý phát ai_status định kỳ 2s và khi đổi trạng thái (CP-06)
+        last_status_broadcast_time = 0.0
+        prev_state: Optional[str] = None
+
         while not self._stop_event.is_set():
             loop_start = time.perf_counter()
+            now = time.time()
 
             try:
+                # CP-06: Xác định trạng thái hoạt động hiện tại
+                is_paused = ai_control.is_ai_paused()
+                with self._lock:
+                    tracking_count = len(self._tracked_faces)
+
+                if is_paused:
+                    current_state = "tạm dừng do đăng ký"
+                elif tracking_count > 0:
+                    current_state = "đang theo dõi"
+                else:
+                    current_state = "đang chờ"
+
+                # Phát ai_status khi ĐỔI TRẠNG THÁI hoặc ĐỊNH KỲ MỖI 2 GIÂY (CP-06)
+                state_changed = (current_state != prev_state)
+                time_to_broadcast = (now - last_status_broadcast_time >= 2.0)
+
+                if state_changed or time_to_broadcast:
+                    self.broadcast_ai_status()
+                    last_status_broadcast_time = now
+                    prev_state = current_state
+
                 # 1. Kiểm tra cờ tạm dừng AI (khi B5 đang quay video đăng ký)
-                if ai_control.is_ai_paused():
+                if is_paused:
                     self._stop_event.wait(timeout=0.2)
                     continue
 
                 # 2. Xác định tần số mục tiêu (Idle 3 fps hoặc Active 6 fps)
-                now = time.time()
                 time_since_face = now - self._last_face_seen_time
                 if self._last_face_seen_time > 0 and time_since_face <= IDLE_TIMEOUT_SEC:
                     target_fps = AI_FPS_ACTIVE
@@ -635,6 +688,14 @@ def status() -> Dict[str, Any]:
 
 def is_running() -> bool:
     return _auto_verify_service.is_running()
+
+
+def get_ai_status_payload() -> Dict[str, Any]:
+    return _auto_verify_service.get_ai_status_payload()
+
+
+def broadcast_ai_status() -> None:
+    _auto_verify_service.broadcast_ai_status()
 
 
 def set_event_callback(callback: Optional[Callable[[str, dict], None]]) -> None:

@@ -55,6 +55,18 @@ class ConnectionManager:
         except Exception as e:
             logger.warning("Không thể gửi camera_status khởi tạo: %s", e)
 
+        # Gửi ngay ai_status hiện tại để chip AI trên Dashboard sáng ngay lập tức (CP-06)
+        try:
+            from services.auto_verify_service import get_auto_verify_service
+            ai_svc = get_auto_verify_service()
+            ai_data = ai_svc.get_ai_status_payload()
+            await websocket.send_json({
+                "event": "ai_status",
+                "data": ai_data,
+            })
+        except Exception as e:
+            logger.debug("Không thể gửi ai_status khởi tạo: %s", e)
+
     def disconnect(self, websocket: WebSocket) -> None:
         """Gỡ bỏ kết nối khi client ngắt kết nối."""
         with self._lock:
