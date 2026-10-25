@@ -8,9 +8,15 @@ from sqlalchemy import func
 
 from database.database import get_db
 from database.models import User, FaceEmbedding
-from services.registration_service import registration_lock, record_registration_frames
+from services.registration_service import (
+    registration_lock,
+    record_registration_frames,
+    register_resident,
+    NotEnoughQualityFramesError,
+)
 
 router = APIRouter(prefix="/api/residents", tags=["residents"])
+
 
 
 
@@ -183,11 +189,29 @@ def create_resident(
         # CP-02: Quay 3 giây từ camera backend, tạm dừng AI và phát tiến độ qua WebSocket
         frames = record_registration_frames()
 
-        # CP-02: Tạm trả về số khung thu được, bước lọc CP-03 và lưu CP-04 sẽ tiếp tục
+        # CP-03: Lọc và chọn khung đạt chuẩn (register_resident)
+        try:
+            selected_frames = register_resident(
+                db,
+                {"full_name": name_clean, "age": age, "apartment_number": apt_clean},
+                frames,
+            )
+        except NotEnoughQualityFramesError as e:
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                content={
+                    "reason": "not_enough_quality_frames",
+                    "good": e.good,
+                    "required": e.required,
+                },
+            )
+
+        # CP-03: Tạm trả về số khung giữ lại (bước lưu DB trong một transaction sẽ làm ở CP-04)
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
-            content={"id": 0, "user_code": "USR000000", "frames_kept": len(frames)},
+            content={"id": 0, "user_code": "USR000000", "frames_kept": len(selected_frames)},
         )
+
 
     finally:
         registration_lock.release()

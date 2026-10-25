@@ -68,9 +68,53 @@ def record_registration_frames(camera: Optional[Any] = None) -> List[np.ndarray]
         resume_ai()
 
 
+def filter_and_select_frames(
+    frames: List[np.ndarray],
+    min_good: int = MIN_GOOD_FRAMES,
+    max_keep: int = MAX_KEEP,
+) -> List[dict]:
+    """Lọc các khung hình đạt chuẩn và chọn tối đa max_keep khung có chất lượng tốt nhất.
+
+    CP-03:
+    - Mỗi khung phải có đúng 1 mặt từ detect_faces(f) và frame_quality.ok is True.
+    - Cần tối thiểu min_good (15) khung đạt; ít hơn ném NotEnoughQualityFramesError(good, min_good).
+    - Giữ tối đa max_keep (20) khung có điểm score cao nhất (sắp xếp giảm dần).
+    - Trả về danh sách các dict: {"frame": ndarray, "face": dict, "score": float}.
+    """
+    from ai.detector import detect_faces
+    from ai.quality import frame_quality
+
+    good_items = []
+    for f in frames:
+        if f is None or not isinstance(f, np.ndarray) or f.size == 0:
+            continue
+        try:
+            faces = detect_faces(f)
+            q = frame_quality(f, faces, allow_multiple=False)
+            if q.get("ok"):
+                good_items.append({
+                    "frame": f,
+                    "face": faces[0],
+                    "score": float(q.get("score", 0.0)),
+                })
+        except Exception as e:
+            logger.debug("Lỗi khi đánh giá chất lượng khung: %s", e)
+
+    good_count = len(good_items)
+    if good_count < min_good:
+        raise NotEnoughQualityFramesError(good=good_count, required=min_good)
+
+    # Sắp xếp các khung đạt chuẩn theo điểm chất lượng giảm dần
+    good_items.sort(key=lambda item: item["score"], reverse=True)
+    return good_items[:max_keep]
+
+
 def register_resident(db, info, frames):
     """info: full_name, age, apartment_number. frames: ảnh quay trong 3 giây.
     Lọc chất lượng -> chọn tốt nhất -> embedding -> lưu User + FaceEmbedding.
     Lỗi thì rollback toàn bộ. Trả về user hoặc ném lỗi not_enough_quality_frames."""
-    raise NotImplementedError
+    # CP-03: Lọc và chọn khung đạt chuẩn (ít nhất MIN_GOOD_FRAMES=15, giữ tối đa MAX_KEEP=20)
+    selected_frames = filter_and_select_frames(frames, min_good=MIN_GOOD_FRAMES, max_keep=MAX_KEEP)
+    return selected_frames
+
 
