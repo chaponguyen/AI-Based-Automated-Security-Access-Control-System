@@ -29,3 +29,4 @@
 - 2026-10-25 09:05 [B14] CP-04 (backend/services/speaker_text.py): Implement ham doc_can_ho(code) doc khoi nha theo bang chu cai tieng Viet va doc phong theo tang/phong (A-1203 -> a, muoi hai khong ba, A-1205 -> a, muoi hai khong nam); doc_ten(name) loai bo ky tu la, chuyen chu in hoa sang title case
 - 2026-10-25 09:06 [B14] CP-05 (backend/services/speaker_text.py): Implement ham announcement(result, when) dung hai chuoi display va spoken kem kind (granted, stranger, inactive) theo API_CONTRACT.md
 - 2026-10-25 09:10 [B14] CP-01 (scripts/tts_probe.py): Tao script tts_probe.py do tim cac giong TTS he thong (SAPI5, OneCore, Piper, edge-tts) va phat hien chua co giong tieng Viet
+- 2026-10-25 09:12 [B14] CP-06 (backend/services/speaker_service.py): Implement ham speak(text, is_alert) chi dung giong tieng Viet that, phat 3 tieng bip khi canh bao, khong co giong thi ghi log speaker_unavailable, phat bip canh bao va tra False
