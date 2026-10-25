@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../services/api.js'
 
-export default function LiveStream({ cameraStatus, connected, onStatusChange, startOnMount = false }) {
+export default function LiveStream({ cameraStatus, connected, onStatusChange, startOnMount = false, overlay }) {
   const [enabled, setEnabled] = useState(false)
   const [streamTimestamp, setStreamTimestamp] = useState(0)
   const [retrying, setRetrying] = useState(false)
@@ -118,6 +118,9 @@ export default function LiveStream({ cameraStatus, connected, onStatusChange, st
 
   const streamUrl = `${API_BASE_URL}/api/stream?t=${streamTimestamp}`
   const showImage = enabled && !cameraUnavailable && streamTimestamp > 0
+  const aspectRatio = cameraStatus?.width && cameraStatus?.height
+    ? `${cameraStatus.width} / ${cameraStatus.height}`
+    : '4 / 3'
 
   return (
     <section className="live-stream" aria-label="Camera trực tiếp">
@@ -128,15 +131,17 @@ export default function LiveStream({ cameraStatus, connected, onStatusChange, st
       </div>
 
       {showImage && (
-        <div className="live-stream__frame">
+        <div className="live-stream__frame" style={{ aspectRatio }}>
           <img
             ref={imageRef}
             className="live-stream__image"
             src={streamUrl}
             alt="Hình ảnh camera trực tiếp"
+            style={{ aspectRatio }}
             onLoad={() => setRetrying(false)}
             onError={() => scheduleRetry(streamTimestamp)}
           />
+          {overlay}
           {retrying && <p className="live-stream__retry" role="status">Đang kết nối lại camera...</p>}
         </div>
       )}

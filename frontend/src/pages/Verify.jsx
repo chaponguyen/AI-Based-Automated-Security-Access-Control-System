@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import LiveStream from '../components/LiveStream.jsx'
 import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
+import FaceBox from '../components/FaceBox.jsx'
 import { mockEventsEnabled } from '../services/mock.js'
 import { getReasonLabel } from '../services/reasons.js'
 
@@ -37,8 +38,12 @@ export default function Verify() {
       similarity: allow ? 0.94 : 0.23,
       liveness: true,
       timestamp,
-      box: null,
-      crop_b64: null,
+      box: {
+        bbox: [200, 60, 440, 420],
+        landmarks: [[260, 175], [380, 175], [320, 245], [275, 320], [365, 320]],
+      },
+      crop_b64: window.btoa('<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112"><rect width="112" height="112" fill="#e5eff1"/><ellipse cx="56" cy="49" rx="28" ry="34" fill="#e8bd9d"/><path d="M28 46c0-31 56-31 56 0v-9c0-20-56-20-56 0z" fill="#273a45"/><circle cx="46" cy="48" r="3" fill="#273a45"/><circle cx="66" cy="48" r="3" fill="#273a45"/><path d="M47 65q9 7 18 0" fill="none" stroke="#7d4c3d" stroke-width="2" stroke-linecap="round"/><path d="M18 112c4-25 18-34 38-34s34 9 38 34" fill="#167c87"/></svg>'),
+      crop_mime_type: 'image/svg+xml',
       announcement,
     }
     // TODO B12: bỏ mô phỏng khi backend phát access_result thật.
@@ -60,7 +65,22 @@ export default function Verify() {
       <div className="verify-grid">
         <section className="panel verify-camera-panel">
           <div className="section-heading"><div><p className="eyebrow">CAMERA CỬA CHÍNH</p><h2>Luồng hình ảnh</h2></div></div>
-          <LiveStream cameraStatus={cameraStatus} connected={connected} />
+          <LiveStream
+            cameraStatus={cameraStatus}
+            connected={connected}
+            overlay={lastResult?.box ? <FaceBox box={lastResult.box} width={cameraStatus?.width} height={cameraStatus?.height} /> : null}
+          />
+          <div className="crop-preview">
+            {lastResult?.crop_b64 ? (
+              <img
+                src={lastResult.crop_b64.startsWith('data:') ? lastResult.crop_b64 : `data:${lastResult.crop_mime_type || 'image/jpeg'};base64,${lastResult.crop_b64}`}
+                alt="Vùng đưa vào nhận diện, chỉ khuôn mặt"
+              />
+            ) : (
+              <div className="crop-preview__empty">Chờ vùng cắt từ sự kiện nhận diện</div>
+            )}
+            <p>vùng đưa vào nhận diện (chỉ mặt)</p>
+          </div>
         </section>
 
         <section className="panel verify-result-panel" aria-live="polite">
