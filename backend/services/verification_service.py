@@ -21,6 +21,16 @@ from services import gallery_cache
 from database.models import AccessLog
 
 
+def start_background_loop():
+    from services import auto_verify_service
+    auto_verify_service.start()
+
+
+def stop_background_loop():
+    from services import auto_verify_service
+    auto_verify_service.stop()
+
+
 logger = logging.getLogger(__name__)
 
 

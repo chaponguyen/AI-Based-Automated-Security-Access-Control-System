@@ -58,25 +58,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug("GalleryCache chưa sẵn sàng: %s", e)
 
-    # (4) Khởi động vòng lặp tự động xác thực B12 nếu có
+    # (4) Khởi động vòng lặp tự động xác thực B12
     try:
-        from services import verification_service
-        if hasattr(verification_service, "start_background_loop"):
-            verification_service.start_background_loop()
-            logger.info("Vòng lặp xác thực nền B12 đã khởi động.")
+        from services import auto_verify_service
+        auto_verify_service.start()
+        logger.info("Vòng lặp xác thực nền B12 (AutoVerifyService) đã khởi động thành công.")
     except Exception as e:
-        logger.debug("Verification background loop chưa sẵn sàng: %s", e)
+        logger.warning("Không thể khởi động vòng lặp xác thực nền B12: %s", e)
 
     yield
 
     # Dọn dẹp khi tắt hệ thống (shutdown)
     logger.info("Đang tắt hệ thống và giải phóng tài nguyên...")
     try:
-        from services import verification_service
-        if hasattr(verification_service, "stop_background_loop"):
-            verification_service.stop_background_loop()
-    except Exception:
-        pass
+        from services import auto_verify_service
+        auto_verify_service.stop()
+        logger.info("AutoVerifyService đã được dừng sạch sẽ.")
+    except Exception as e:
+        logger.warning("Lỗi khi dừng AutoVerifyService: %s", e)
 
     if camera is not None:
         try:
@@ -106,11 +105,13 @@ for r in (residents.router, verify.router, logs.router, ws.router, camera.router
 def health():
     """Kiểm tra sức khỏe hệ thống: trạng thái chung, camera và AI."""
     from services.camera_service import get_camera
+    from services import auto_verify_service
     cam = get_camera()
     cam_status = cam.status().get("running", False)
+    ai_status = auto_verify_service.is_running() or ai_running
     return {
         "status": "ok",
         "camera": cam_status,
-        "ai": ai_running,
+        "ai": ai_status,
     }
 
