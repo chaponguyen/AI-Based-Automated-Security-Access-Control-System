@@ -20,3 +20,4 @@
 - 2026-10-24 22:43 [B1] CP-06 (backend/alembic.ini; backend/migrations/env.py): Khoi tao Alembic trong backend/; cau hinh env.py doc DATABASE_URL tu .env qua python-dotenv va lien ket Base.metadata tu database.models; khong luu mat khau trong alembic.ini
 - 2026-10-24 22:56 [B1] CP-07 (backend/migrations/versions/01f66c7fc85b_tao_3_bang_ban_dau.py): Sinh migration dau tien (01f66c7fc85b_tao_3_bang_ban_dau.py) chua 3 bang users, access_logs, face_embeddings voi day du rang buoc, foreign key, index va dung thu tu downgrade
 - 2026-10-25 08:22 [B7] CP-01 (backend/api/residents.py): Implement route GET /api/residents truy van danh sach cu dan gom so luong frames embedding (outerjoin, groupby, khong N+1)
+- 2026-10-25 08:24 [B7] CP-02 (backend/api/residents.py): Implement route PATCH /api/residents/{id}/status cap nhat status active/inactive, kiem tra 404 va validation 422
