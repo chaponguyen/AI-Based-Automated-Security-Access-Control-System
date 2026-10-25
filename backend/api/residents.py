@@ -206,11 +206,16 @@ def create_resident(
                 },
             )
 
-        # CP-03: Tạm trả về số khung giữ lại (bước lưu DB trong một transaction sẽ làm ở CP-04)
+        # CP-04: Lưu thành công trong một transaction, trả về id, user_code, frames_kept
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
-            content={"id": 0, "user_code": "USR000000", "frames_kept": len(selected_frames)},
+            content={
+                "id": selected_frames["id"],
+                "user_code": selected_frames["user_code"],
+                "frames_kept": selected_frames["frames_kept"],
+            },
         )
+
 
 
     finally:

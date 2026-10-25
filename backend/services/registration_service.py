@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 # Hằng số cấu hình riêng theo quy định, không viết cứng trong mã xử lý
 MIN_GOOD_FRAMES = 15   # ít hơn thì từ chối, không tạo cư dân
 MAX_KEEP = 20          # giữ tối đa 20 khung tốt nhất
+MODEL_VERSION = "buffalo_sc"
 
 # Khóa luồng đảm bảo chỉ có tối đa một phiên đăng ký cư dân diễn ra tại một thời điểm
 registration_lock = threading.Lock()
@@ -22,6 +23,23 @@ class NotEnoughQualityFramesError(Exception):
         self.good = good
         self.required = required
         super().__init__(f"Chỉ thu được {good}/{required} khung hình đạt chất lượng.")
+
+
+def reload_gallery_cache(db=None):
+    """Nạp lại bộ nhớ cache gallery sau khi có cư dân mới.
+
+    TODO(B6): GalleryCache do Agent A2 phụ trách triển khai ở B6.
+    Hiện tại B6 chưa hoàn tất nên kiểm tra và bỏ qua an toàn, ghi nhận log TODO.
+    """
+    try:
+        from services import gallery_cache
+        if hasattr(gallery_cache, "reload"):
+            gallery_cache.reload(db)
+        elif hasattr(gallery_cache, "init_cache"):
+            gallery_cache.init_cache(db)
+    except Exception as err:
+        logger.debug("GalleryCache chưa sẵn sàng (B6), bỏ qua nạp cache: %s", err)
+
 
 
 def record_registration_frames(camera: Optional[Any] = None) -> List[np.ndarray]:
@@ -109,12 +127,93 @@ def filter_and_select_frames(
     return good_items[:max_keep]
 
 
-def register_resident(db, info, frames):
+def register_resident(db, info, frames, _fail_at_embedding: Optional[int] = None):
     """info: full_name, age, apartment_number. frames: ảnh quay trong 3 giây.
-    Lọc chất lượng -> chọn tốt nhất -> embedding -> lưu User + FaceEmbedding.
-    Lỗi thì rollback toàn bộ. Trả về user hoặc ném lỗi not_enough_quality_frames."""
-    # CP-03: Lọc và chọn khung đạt chuẩn (ít nhất MIN_GOOD_FRAMES=15, giữ tối đa MAX_KEEP=20)
+
+    CP-03, CP-04:
+    - Lọc chất lượng -> chọn tối đa MAX_KEEP=20 khung tốt nhất (tối thiểu MIN_GOOD_FRAMES=15).
+    - Tạo embedding (ArcFace 512-dim đã chuẩn hóa L2) cho từng khung đã chọn.
+    - Lưu trong MỘT transaction duy nhất: thêm User, flush() lấy id, thêm các FaceEmbedding (kèm quality, model_version), commit().
+    - Nếu gặp lỗi: rollback toàn bộ transaction để không tạo User mồ côi.
+    - Sau khi lưu thành công: nạp lại bộ nhớ gallery (reload_gallery_cache).
+    - Trả về dict: {"id": user.id, "user_code": user.user_code, "frames_kept": len(embeddings), "user": user}.
+    """
+    from ai.aligner import crop_face
+    from ai.embedder import get_embedding
+    from database.models import User, FaceEmbedding
+
+    # 1. Lọc và chọn khung hình đạt chuẩn
     selected_frames = filter_and_select_frames(frames, min_good=MIN_GOOD_FRAMES, max_keep=MAX_KEEP)
-    return selected_frames
+
+    # 2. Trích xuất thông tin cư dân
+    if isinstance(info, dict):
+        full_name = str(info.get("full_name", "")).strip()
+        age = int(info.get("age", 0))
+        apartment_number = str(info.get("apartment_number", "")).strip()
+    else:
+        full_name = str(getattr(info, "full_name", "")).strip()
+        age = int(getattr(info, "age", 0))
+        apartment_number = str(getattr(info, "apartment_number", "")).strip()
+
+    # 3. Tạo embeddings cho các khung hình được chọn
+    embedding_records = []
+    for item in selected_frames:
+        aligned = crop_face(item["frame"], item["face"]["kps"])
+        emb = get_embedding(aligned)
+        if emb is not None:
+            embedding_records.append((emb.tolist(), item["score"]))
+
+    if len(embedding_records) < MIN_GOOD_FRAMES:
+        raise NotEnoughQualityFramesError(good=len(embedding_records), required=MIN_GOOD_FRAMES)
+
+    # Nếu không có db (chạy test thuần không CSDL), trả về thông tin tính toán
+    if db is None:
+        return {
+            "id": 0,
+            "user_code": "USR000000",
+            "frames_kept": len(embedding_records),
+            "user": None,
+        }
+
+    # 4. Lưu trong MỘT Transaction duy nhất
+    try:
+        user = User(
+            full_name=full_name,
+            age=age,
+            apartment_number=apartment_number,
+            status="active",
+        )
+        db.add(user)
+        db.flush()  # Sinh user.id tự tăng để liên kết foreign key
+
+        for idx, (emb_vec, quality) in enumerate(embedding_records):
+            if _fail_at_embedding is not None and (idx + 1) == _fail_at_embedding:
+                raise RuntimeError(f"Giả lập lỗi tại embedding thứ {_fail_at_embedding} để kiểm thử rollback")
+
+            face_emb = FaceEmbedding(
+                user_id=user.id,
+                embedding=emb_vec,
+                quality=quality,
+                model_version=MODEL_VERSION,
+            )
+            db.add(face_emb)
+
+        db.commit()
+        db.refresh(user)
+    except Exception as e:
+        db.rollback()
+        logger.error("Lỗi khi lưu cư dân và embedding vào CSDL, đã rollback: %s", e)
+        raise e
+
+    # 5. Sau khi lưu thành công: gọi hàm đệm nạp lại gallery cache (TODO B6)
+    reload_gallery_cache(db)
+
+    return {
+        "id": user.id,
+        "user_code": user.user_code,
+        "frames_kept": len(embedding_records),
+        "user": user,
+    }
+
 
 
