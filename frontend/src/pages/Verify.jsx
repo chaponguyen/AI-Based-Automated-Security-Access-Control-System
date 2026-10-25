@@ -12,6 +12,11 @@ function getResidentName(result) {
   return result?.user?.full_name || result?.user?.name || result?.name || 'Không xác định'
 }
 
+function formatEventTime(value) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleTimeString('vi-VN')
+}
+
 export default function Verify() {
   const { connected, lastResult, cameraStatus, doorState } = useDashboardSocket()
   const [mockCount, setMockCount] = useState(0)
@@ -87,15 +92,24 @@ export default function Verify() {
         <section className="panel verify-result-panel" aria-live="polite">
           <div className="section-heading"><div><p className="eyebrow">KẾT QUẢ MỚI NHẤT</p><h2>Quyết định ra vào</h2></div></div>
           {lastResult ? (
-            <div className={`verification-result ${granted ? 'verification-result--granted' : 'verification-result--denied'}`}>
-              <span className={`result-chip ${granted ? 'result-chip--good' : 'result-chip--bad'}`}>{granted ? 'Cho phép' : 'Từ chối'}</span>
-              <dl className="verification-details">
-                <div><dt>Cư dân</dt><dd>{getResidentName(lastResult)}</dd></div>
-                <div><dt>Độ giống</dt><dd>{typeof lastResult.similarity === 'number' ? lastResult.similarity.toFixed(2) : '—'}</dd></div>
-                <div><dt>Chống giả mạo</dt><dd>{lastResult.liveness === true ? 'Đạt' : lastResult.liveness === false ? 'Không đạt' : '—'}</dd></div>
-                <div><dt>Lý do</dt><dd>{getReasonLabel(lastResult.reason)}</dd></div>
-              </dl>
-            </div>
+            <>
+              <div className={`verification-result ${granted ? 'verification-result--granted' : 'verification-result--denied'}`}>
+                <span className={`result-chip ${granted ? 'result-chip--good' : 'result-chip--bad'}`}>{granted ? 'Cho phép' : 'Từ chối'}</span>
+                <dl className="verification-details">
+                  <div><dt>Cư dân</dt><dd>{getResidentName(lastResult)}</dd></div>
+                  <div><dt>Độ giống</dt><dd>{typeof lastResult.similarity === 'number' ? lastResult.similarity.toFixed(2) : '—'}</dd></div>
+                  <div><dt>Chống giả mạo</dt><dd>{lastResult.liveness === true ? 'Đạt' : lastResult.liveness === false ? 'Không đạt' : '—'}</dd></div>
+                  <div><dt>Lý do</dt><dd>{getReasonLabel(lastResult.reason)}</dd></div>
+                </dl>
+              </div>
+              {lastResult.announcement?.display && (
+                <section className={`announcement-card ${granted ? 'announcement-card--granted' : 'announcement-card--denied'}`}>
+                  <div className="announcement-card__heading"><strong>Thông báo</strong><time dateTime={lastResult.timestamp}>{formatEventTime(lastResult.timestamp)}</time></div>
+                  <p className="announcement-card__display">{lastResult.announcement.display}</p>
+                  {lastResult.announcement.spoken && <p className="announcement-card__spoken">Loa đọc: {lastResult.announcement.spoken}</p>}
+                </section>
+              )}
+            </>
           ) : (
             <div className="verify-waiting" role="status">
               <span className={`status-chip ${connected ? 'status-chip--good' : 'status-chip--warning'}`}>{connected ? 'Đã kết nối' : 'Đang kết nối lại'}</span>
