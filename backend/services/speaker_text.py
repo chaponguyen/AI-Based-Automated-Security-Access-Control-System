@@ -172,3 +172,99 @@ def doc_ten(name: str) -> str:
     return " ".join(clean_name.split())
 
 
+def announcement(result: any, when=None) -> dict:
+    """Dựng hai chuỗi thông báo: display (hiển thị web) và spoken (đọc qua loa) (CP-05).
+
+    Khớp API CONTRACT:
+    {
+        "display": str,
+        "spoken": str,
+        "kind": "granted" | "stranger" | "inactive"
+    }
+
+    Quy tắc câu mẫu (docs/plan/MO_TA_CONG_VIEC.md mục B14):
+    - Granted:
+        display: '{tên} ở phòng {căn hộ} đã vào chung cư lúc {HH}:{MM}.'
+        spoken: '{tên} ở phòng {doc_can_ho} đã vào chung cư lúc {doc_gio}.'
+        Ví dụ: 'Nguyễn Văn An ở phòng A-1203 đã vào chung cư lúc 09:35.'
+               'Nguyễn Văn An ở phòng a, mười hai không ba đã vào chung cư lúc chín giờ ba mươi lăm phút.'
+    - Người lạ (not_matched | spoof_detected):
+        display & spoken: 'Có người lạ đang ở ngoài chung cư, bảo vệ cần ra gấp.'
+        kind: 'stranger'
+    - Inactive:
+        display: 'Cư dân {tên} ở phòng {căn hộ} đang bị tạm khóa quyền ra vào, vui lòng liên hệ ban quản lý.'
+        spoken: 'Cư dân {tên} ở phòng {doc_can_ho} đang bị tạm khóa quyền ra vào, vui lòng liên hệ ban quản lý.'
+        kind: 'inactive'
+    - Biên: Thiếu căn hộ thì bỏ cụm 'ở phòng ...'.
+    """
+    from datetime import datetime
+
+    if when is None:
+        when = datetime.now()
+
+    time_display = when.strftime("%H:%M")
+    time_spoken = doc_gio(when)
+
+    # Trích xuất thông tin từ result (hỗ trợ dict hoặc object)
+    if isinstance(result, dict):
+        decision = result.get("decision", "denied")
+        reason = result.get("reason", "")
+        user = result.get("user")
+    else:
+        decision = getattr(result, "decision", "denied")
+        reason = getattr(result, "reason", "")
+        user = getattr(result, "user", None)
+
+    # Lấy thông tin user nếu có
+    full_name = None
+    apartment_number = None
+    if user is not None:
+        if isinstance(user, dict):
+            full_name = user.get("full_name")
+            apartment_number = user.get("apartment_number")
+        else:
+            full_name = getattr(user, "full_name", None)
+            apartment_number = getattr(user, "apartment_number", None)
+
+    # 1. Trường hợp Người lạ (stranger)
+    if reason in ("not_matched", "spoof_detected") or user is None or decision == "denied" and reason != "inactive_user":
+        text = "Có người lạ đang ở ngoài chung cư, bảo vệ cần ra gấp."
+        return {
+            "display": text,
+            "spoken": text,
+            "kind": "stranger",
+        }
+
+    # 2. Trường hợp Cư dân bị vô hiệu hóa (inactive)
+    name_clean = doc_ten(full_name or "Cư dân")
+    if reason == "inactive_user":
+        if apartment_number:
+            apt_spoken = doc_can_ho(apartment_number)
+            display = f"Cư dân {name_clean} ở phòng {apartment_number} đang bị tạm khóa quyền ra vào, vui lòng liên hệ ban quản lý."
+            spoken = f"Cư dân {name_clean} ở phòng {apt_spoken} đang bị tạm khóa quyền ra vào, vui lòng liên hệ ban quản lý."
+        else:
+            display = f"Cư dân {name_clean} đang bị tạm khóa quyền ra vào, vui lòng liên hệ ban quản lý."
+            spoken = f"Cư dân {name_clean} đang bị tạm khóa quyền ra vào, vui lòng liên hệ ban quản lý."
+        return {
+            "display": display,
+            "spoken": spoken,
+            "kind": "inactive",
+        }
+
+    # 3. Trường hợp Cho phép vào (granted)
+    if apartment_number:
+        apt_spoken = doc_can_ho(apartment_number)
+        display = f"{name_clean} ở phòng {apartment_number} đã vào chung cư lúc {time_display}."
+        spoken = f"{name_clean} ở phòng {apt_spoken} đã vào chung cư lúc {time_spoken}."
+    else:
+        display = f"{name_clean} đã vào chung cư lúc {time_display}."
+        spoken = f"{name_clean} đã vào chung cư lúc {time_spoken}."
+
+    return {
+        "display": display,
+        "spoken": spoken,
+        "kind": "granted",
+    }
+
+
+
