@@ -80,3 +80,95 @@ def doc_gio(dt) -> str:
     phut_str = so_sang_chu(dt.minute)
     return f"{gio_str} giờ {phut_str} phút"
 
+
+BANG_CHU_CAI = {
+    "A": "a", "B": "bê", "C": "xê", "D": "đê", "E": "e", "F": "ép",
+    "G": "gờ", "H": "hắt", "I": "i", "J": "giê", "K": "ca", "L": "e-lờ",
+    "M": "em", "N": "en", "O": "o", "P": "pê", "Q": "quy", "R": "e-rờ",
+    "S": "ét", "T": "tê", "U": "u", "V": "vê", "W": "vê-đúp", "X": "ích",
+    "Y": "i-dài", "Z": "dét",
+}
+
+
+def doc_can_ho(code: str, mode: str = None) -> str:
+    """Đổi mã căn hộ sang chuỗi tiếng Việt phát âm rõ ràng cho loa (CP-04).
+
+    Quy tắc:
+    - Chữ cái khối nhà: đọc theo bảng chữ cái tiếng Việt (A->a, B->bê, C->xê...).
+    - Dấu '-', '/', '.' được loại bỏ.
+    - Số phòng theo mode:
+      + 'floor_room' (mặc định): 2 chữ số cuối là phòng (dưới 10 đọc kèm 'không'),
+        các số trước là tầng (ví dụ: A-1203 -> 'a, mười hai không ba', B-0807 -> 'bê, tám không bảy',
+        C-502 -> 'xê, năm không hai', A-1205 -> 'a, mười hai không năm').
+      + 'digits': đọc từng chữ số (ví dụ: 'một hai không ba').
+    """
+    if not code:
+        return ""
+
+    import os
+    import re
+
+    if mode is None:
+        mode = os.getenv("ROOM_READ_MODE", "floor_room")
+
+    code_str = str(code).strip()
+    m = re.search(r"([a-zA-Z]+)?(?:[^0-9a-zA-Z]*)([0-9]+)?", code_str)
+    letters = m.group(1) if m else None
+    digits = m.group(2) if m else None
+
+    letter_text = ""
+    if letters:
+        letter_text = ", ".join(BANG_CHU_CAI.get(c.upper(), c.lower()) for c in letters)
+
+    num_text = ""
+    if digits:
+        if mode == "digits":
+            num_text = " ".join(DIGITS[int(d)] for d in digits)
+        else:  # floor_room
+            if len(digits) >= 3:
+                tang_num = int(digits[:-2])
+                phong_str = digits[-2:]
+                phong_num = int(phong_str)
+                tang_text = so_sang_chu(tang_num)
+                if phong_num < 10:
+                    phong_text = f"không {DIGITS[phong_num]}"
+                else:
+                    phong_text = so_sang_chu(phong_num)
+                num_text = f"{tang_text} {phong_text}"
+            else:
+                num_text = so_sang_chu(int(digits))
+
+    if letter_text and num_text:
+        return f"{letter_text}, {num_text}"
+    if letter_text:
+        return letter_text
+    if num_text:
+        return num_text
+    return re.sub(r"[-/.]", " ", code_str).strip()
+
+
+def doc_ten(name: str) -> str:
+    """Chuẩn hóa tên cư dân để loa đọc liền mạch, không đánh vần (CP-04).
+
+    Quy tắc:
+    - Bỏ chữ số, ký tự đặc biệt, dấu câu lạ.
+    - Giữ nguyên chữ có dấu tiếng Việt.
+    - Chuyển TOÀN CHỮ HOA thành Title Case để engine TTS không đánh vần từng chữ cái.
+    """
+    if not name:
+        return ""
+
+    import re
+
+    name_str = str(name).strip()
+    if name_str.isupper():
+        name_str = name_str.title()
+
+    clean_name = re.sub(
+        r"[^a-zA-ZàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệđìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẸÊỀẾỂỄỆĐÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ\s]",
+        "",
+        name_str,
+    )
+    return " ".join(clean_name.split())
+
+

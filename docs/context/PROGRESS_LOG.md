@@ -26,3 +26,4 @@
 - 2026-10-25 09:00 [B6] CP-01 (backend/services/decision.py): Implement ham thuan decide(similarity, liveness, user, threshold=0.5) tra (decision, reason) theo thu tu kiem tra liveness, user/threshold, status
 - 2026-10-25 09:02 [B14] CP-02 (backend/services/speaker_text.py): Implement ham so_sang_chu(n) doi so nguyen 0 den 999 sang chu tieng Viet theo chuan ngu phap (nam/lam, mot/muoi mot/hai muoi mot, linh)
 - 2026-10-25 09:03 [B14] CP-03 (backend/services/speaker_text.py): Implement ham doc_gio(dt) doi datetime sang chu tieng Viet (gio dung, linh nam phut, ba muoi lam phut)
+- 2026-10-25 09:05 [B14] CP-04 (backend/services/speaker_text.py): Implement ham doc_can_ho(code) doc khoi nha theo bang chu cai tieng Viet va doc phong theo tang/phong (A-1203 -> a, muoi hai khong ba, A-1205 -> a, muoi hai khong nam); doc_ten(name) loai bo ky tu la, chuyen chu in hoa sang title case
