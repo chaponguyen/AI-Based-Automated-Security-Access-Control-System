@@ -11,7 +11,7 @@ import Table from '../components/ui/Table.jsx'
 import { DoorIcon } from '../components/ui/icons.jsx'
 import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
 import { api, getApiErrorMessage } from '../services/api.js'
-import { mockAdminEnabled, mockGetDoorStatus, mockOpenDoor } from '../services/mock.js'
+import { mockGetDoorStatus, mockOpenDoor } from '../services/mock.js'
 import { getReasonLabel } from '../services/reasons.js'
 
 function startOfLocalDayIso() {
@@ -71,7 +71,8 @@ export default function Dashboard() {
     setDoorLoading(true)
     setDoorError('')
     try {
-      const data = mockAdminEnabled ? await mockGetDoorStatus() : (await api.get('/door/status')).data
+      // Demo frontend-only: điều khiển cửa không phụ thuộc backend hoặc khóa thật.
+      const data = await mockGetDoorStatus()
       if (!socketDoorRef.current) setDoorStatus(data)
     } catch (error) {
       setDoorError(getApiErrorMessage(error, 'Không tải được trạng thái cửa.'))
@@ -112,9 +113,8 @@ export default function Dashboard() {
     setDoorSubmitting(true)
     setDoorActionError('')
     try {
-      const data = mockAdminEnabled
-        ? await mockOpenDoor(doorReason.trim())
-        : (await api.post('/door/open', doorReason.trim() ? { reason: doorReason.trim() } : {})).data
+      // Demo frontend-only: mô phỏng mở cửa 10 giây trong tab hiện tại.
+      const data = await mockOpenDoor(doorReason.trim())
       setDoorStatus(data)
       setClockNow(Date.now())
       setDoorDialogOpen(false)
@@ -172,7 +172,7 @@ export default function Dashboard() {
               <Button className="dashboard-door-button" onClick={() => { setDoorActionError(''); setDoorDialogOpen(true) }} disabled={doorLoading || doorOpen}>
                 {doorOpen ? `Đang mở · ${remainingSeconds} giây` : 'Mở cửa 10 giây'}
               </Button>
-              {mockAdminEnabled && <small className="dashboard-demo-note">Chế độ mô phỏng, chưa kết nối khóa thật.</small>}
+              <small className="dashboard-demo-note">Chế độ mô phỏng, chưa kết nối khóa thật.</small>
             </>
           )}
         </Card>

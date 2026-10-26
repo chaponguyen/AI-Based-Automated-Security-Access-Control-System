@@ -111,7 +111,7 @@ function dispatchMockDoorState(data) {
   window.dispatchEvent(new CustomEvent('dashboard:mock-event', { detail: { event: 'door_state', data } }))
 }
 
-// TODO(B17): thay mock trạng thái cửa bằng GET /api/door/status sau khi B16 sẵn sàng.
+// Demo frontend-only theo yêu cầu chủ dự án: trạng thái cửa chỉ nằm trong bộ nhớ tab.
 export async function mockGetDoorStatus() {
   const isOpen = mockDoorUntil > Date.now()
   return {
@@ -121,7 +121,7 @@ export async function mockGetDoorStatus() {
   }
 }
 
-// TODO(B17): thay mock mở cửa bằng POST /api/door/open sau khi B16 sẵn sàng.
+// Demo frontend-only theo yêu cầu chủ dự án: mở cửa giả lập trong 10 giây, không gọi backend.
 export async function mockOpenDoor(reason = '') {
   if (mockDoorUntil > Date.now()) {
     return { ...(await mockGetDoorStatus()), open_seconds: Math.ceil((mockDoorUntil - Date.now()) / 1000), already_open: true }
