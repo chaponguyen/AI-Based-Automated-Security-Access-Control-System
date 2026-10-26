@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import LiveStream from '../components/LiveStream.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
@@ -11,7 +12,7 @@ import Table from '../components/ui/Table.jsx'
 import { DoorIcon } from '../components/ui/icons.jsx'
 import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
 import { api, getApiErrorMessage } from '../services/api.js'
-import { mockGetDoorStatus, mockOpenDoor } from '../services/mock.js'
+import { mockAdminEnabled, mockGetDoorStatus, mockOpenDoor } from '../services/mock.js'
 import { getReasonLabel } from '../services/reasons.js'
 
 function startOfLocalDayIso() {
@@ -35,6 +36,8 @@ function SystemStatus({ label, value, tone }) {
 }
 
 export default function Dashboard() {
+  const { user } = useOutletContext() || {}
+  const isManager = user?.role === 'manager'
   const { connected, lastResult, cameraStatus, aiStatus, recording, doorState } = useDashboardSocket()
   const [logs, setLogs] = useState([])
   const [logsLoading, setLogsLoading] = useState(true)
@@ -71,15 +74,17 @@ export default function Dashboard() {
     setDoorLoading(true)
     setDoorError('')
     try {
-      // Demo frontend-only: điều khiển cửa không phụ thuộc backend hoặc khóa thật.
-      const data = await mockGetDoorStatus()
+      // Security chạy demo frontend-only; manager dùng API thật trừ khi bật mock quản trị.
+      const data = !isManager || mockAdminEnabled
+        ? await mockGetDoorStatus()
+        : (await api.get('/door/status')).data
       if (!socketDoorRef.current) setDoorStatus(data)
     } catch (error) {
       setDoorError(getApiErrorMessage(error, 'Không tải được trạng thái cửa.'))
     } finally {
       setDoorLoading(false)
     }
-  }, [])
+  }, [isManager])
 
   useEffect(() => { void loadDoorStatus() }, [loadDoorStatus])
 
@@ -113,8 +118,10 @@ export default function Dashboard() {
     setDoorSubmitting(true)
     setDoorActionError('')
     try {
-      // Demo frontend-only: mô phỏng mở cửa 10 giây trong tab hiện tại.
-      const data = await mockOpenDoor(doorReason.trim())
+      // Security chạy demo frontend-only; manager dùng API thật trừ khi bật mock quản trị.
+      const data = !isManager || mockAdminEnabled
+        ? await mockOpenDoor(doorReason.trim())
+        : (await api.post('/door/open', doorReason.trim() ? { reason: doorReason.trim() } : {})).data
       setDoorStatus(data)
       setClockNow(Date.now())
       setDoorDialogOpen(false)
@@ -125,6 +132,10 @@ export default function Dashboard() {
       setDoorSubmitting(false)
     }
   }
+
+  const closeDoorDialog = useCallback(() => {
+    if (!doorSubmitting) setDoorDialogOpen(false)
+  }, [doorSubmitting])
 
   const cameraLabel = cameraStatus?.running ? 'Đang hoạt động' : cameraStatus ? 'Chưa sẵn sàng' : 'Đang kiểm tra'
   const aiLabel = aiStatus?.running ? 'Đang hoạt động' : aiStatus ? 'Đang dừng' : 'Đang kiểm tra'
@@ -172,7 +183,7 @@ export default function Dashboard() {
               <Button className="dashboard-door-button" onClick={() => { setDoorActionError(''); setDoorDialogOpen(true) }} disabled={doorLoading || doorOpen}>
                 {doorOpen ? `Đang mở · ${remainingSeconds} giây` : 'Mở cửa 10 giây'}
               </Button>
-              <small className="dashboard-demo-note">Chế độ mô phỏng, chưa kết nối khóa thật.</small>
+              {(!isManager || mockAdminEnabled) && <small className="dashboard-demo-note">Chế độ mô phỏng, chưa kết nối khóa thật.</small>}
             </>
           )}
         </Card>
@@ -217,7 +228,7 @@ export default function Dashboard() {
 
       <ConfirmDialog
         open={doorDialogOpen}
-        onClose={() => { if (!doorSubmitting) setDoorDialogOpen(false) }}
+        onClose={closeDoorDialog}
         onConfirm={() => void submitDoorOpen()}
         title="Xác nhận mở cửa"
         description="Cửa sẽ được mở trong tối đa 10 giây."
