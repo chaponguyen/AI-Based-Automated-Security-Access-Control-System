@@ -120,8 +120,8 @@ def http_exception_handler(request: Request, exc: HTTPException):
         return JSONResponse(status_code=exc.status_code, content=exc.detail)
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
-from api import auth, residents, verify, logs, ws, camera, stream, speaker, staff
-for r in (auth.router, residents.router, residents.registration_router, verify.router, logs.router, ws.router, camera.router, stream.router, speaker.router, staff.router):
+from api import auth, residents, verify, logs, ws, camera, stream, speaker, staff, audit
+for r in (auth.router, residents.router, residents.registration_router, verify.router, logs.router, ws.router, camera.router, stream.router, speaker.router, staff.router, audit.router):
     app.include_router(r)
 
 

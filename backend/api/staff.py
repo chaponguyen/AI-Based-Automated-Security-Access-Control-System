@@ -63,8 +63,9 @@ def _record_audit(
     target_type: Optional[str] = None,
     target_id: Optional[str] = None,
     detail: Optional[str] = None,
+    commit: bool = True,
 ) -> None:
-    """Ghi vết kiểm toán an toàn (CP-04 sẽ hoàn thiện dịch vụ audit_service)."""
+    """Ghi vết kiểm toán an toàn."""
     try:
         from services import audit_service
         audit_service.record(
@@ -74,9 +75,11 @@ def _record_audit(
             target_type=target_type,
             target_id=target_id,
             detail=detail,
+            commit=commit,
         )
     except Exception as e:
-        logger.debug("Chưa nối audit_service hoặc ghi audit thất bại: %s", e)
+        logger.debug("Ghi audit thất bại: %s", e)
+        raise e
 
 
 @router.get("", response_model=List[StaffResponse])
@@ -335,17 +338,26 @@ def delete_staff(
     target_id = target.id
 
     # 3. Xóa tài khoản (các session sẽ tự động CASCADE xóa theo FK)
-    db.delete(target)
-    db.commit()
-
-    # 4. Ghi audit log
-    _record_audit(
-        db,
-        current_staff,
-        "staff_deleted",
-        target_type="staff",
-        target_id=str(target_id),
-        detail=f"Xóa tài khoản {deleted_username}",
-    )
+    # và ghi vết kiểm toán trong CÙNG TRANSACTION (nếu lỗi thì rollback)
+    try:
+        db.delete(target)
+        from services import audit_service
+        audit_service.record(
+            db,
+            current_staff,
+            "staff_deleted",
+            target_type="staff",
+            target_id=str(target_id),
+            detail=f"Xóa tài khoản {deleted_username}",
+            commit=False,
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error("Lỗi khi xóa tài khoản staff hoặc ghi audit: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"reason": "database_error", "message": "Không thể xóa tài khoản"},
+        )
 
     return {"ok": True}

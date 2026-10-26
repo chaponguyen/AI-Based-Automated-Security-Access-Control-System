@@ -269,13 +269,14 @@ def main():
         print(f"✓ Test 5: Xóa log theo khoảng thời gian thành công ({res_del_range})")
 
         # -----------------------------------------------------------
-        # TEST 6: BẢO VỆ TUYỆT ĐỐI audit_logs: KHÔNG BAO GIỜ BỊ ĐỤNG TỚI
+        # TEST 6: BẢO VỆ TUYỆT ĐỐI audit_logs: KHÔNG BAO GIỜ BỊ XÓA
         # -----------------------------------------------------------
+        # 2 lần gọi delete_logs thành công sinh thêm 2 dòng audit_logs ("logs_deleted")
         audit_count_after = db.query(AuditLog).count()
-        assert audit_count_after == audit_count_before, f"Bảng audit_logs không được thay đổi số lượng ({audit_count_before} vs {audit_count_after})"
+        assert audit_count_after == audit_count_before + 2, f"Bảng audit_logs phải được ghi thêm 2 dòng audit (trước: {audit_count_before}, sau: {audit_count_after})"
         audit_exists = db.query(AuditLog).filter(AuditLog.id == test_audit_entry.id).first()
-        assert audit_exists is not None, "Dòng audit_logs thử nghiệm phải còn nguyên vẹn"
-        print(f"✓ Test 6: Bảng audit_logs bất biến tuyệt đối (trước: {audit_count_before}, sau: {audit_count_after})")
+        assert audit_exists is not None, "Dòng audit_logs thử nghiệm trước đó phải còn nguyên vẹn"
+        print(f"✓ Test 6: Bảng audit_logs không bị xóa bất kỳ dòng nào, ghi nhận đúng 2 vết logs_deleted (trước: {audit_count_before}, sau: {audit_count_after})")
 
     finally:
         cleanup(db)

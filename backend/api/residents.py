@@ -222,6 +222,7 @@ def get_residents(db: Session = Depends(get_db)):
 def update_resident_status(
     id: int,
     payload: StatusUpdatePayload,
+    current_staff: StaffAccount = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
     """Cập nhật trạng thái kích hoạt/vô hiệu hóa của cư dân (active/inactive).
@@ -258,6 +259,16 @@ def update_resident_status(
         .filter(FaceEmbedding.user_id == user.id)
         .scalar()
         or 0
+    )
+
+    # Ghi nhận audit log (CP-04)
+    _record_audit(
+        db,
+        current_staff,
+        "resident_status_changed",
+        target_type="resident",
+        target_id=str(user.id),
+        detail=f"Đổi trạng thái {user.full_name} sang {payload.status}",
     )
 
     return ResidentResponse(
@@ -308,8 +319,26 @@ def delete_resident(
         "full_name": user.full_name,
     }
 
-    db.delete(user)
-    db.commit()
+    try:
+        db.delete(user)
+        from services import audit_service
+        audit_service.record(
+            db,
+            current_staff,
+            "resident_deleted",
+            target_type="resident",
+            target_id=str(deleted_info["id"]),
+            detail=f"Xóa cư dân {deleted_info['full_name']} ({deleted_info['user_code']})",
+            commit=False,
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error("Lỗi khi xóa cư dân hoặc ghi audit: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"reason": "database_error", "message": "Không thể xóa cư dân"},
+        )
 
     # Nạp lại GalleryCache ngay lập tức để đồng bộ bộ nhớ nhận diện
     try:
@@ -318,16 +347,6 @@ def delete_resident(
         logger.info("Đã xóa cư dân %s (id=%s) và nạp lại GalleryCache thành công", deleted_info["full_name"], id)
     except Exception as e:
         logger.error("Lỗi khi nạp lại GalleryCache sau khi xóa cư dân %s: %s", id, e)
-
-    # Ghi nhận audit log (CP-04 sẽ hoàn thiện dịch vụ audit_service)
-    _record_audit(
-        db,
-        current_staff,
-        "resident_deleted",
-        target_type="resident",
-        target_id=str(deleted_info["id"]),
-        detail=f"Xóa cư dân {deleted_info['full_name']} ({deleted_info['user_code']})",
-    )
 
     return {
         "ok": True,
@@ -362,6 +381,7 @@ def create_resident(
     full_name: str = Form(..., description="Họ và tên cư dân (2 đến 150 ký tự sau khi bỏ khoảng trắng thừa)"),
     age: int = Form(..., description="Tuổi cư dân (1 đến 120)"),
     apartment_number: str = Form(..., description="Mã căn hộ (1 đến 20 ký tự, chữ, số, - / .)"),
+    current_staff: StaffAccount = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
     """Đăng ký cư dân kèm khuôn mặt qua đoạn quay 3 giây từ camera backend.
@@ -476,6 +496,16 @@ def create_resident(
                     "required": e.required,
                 },
             )
+
+        # Ghi nhận audit log (CP-04)
+        _record_audit(
+            db,
+            current_staff,
+            "resident_registered",
+            target_type="resident",
+            target_id=str(selected_frames["id"]),
+            detail=f"Đăng ký cư dân {name_clean} ({selected_frames['user_code']}), căn hộ {apt_clean}",
+        )
 
         # CP-04: Lưu thành công trong một transaction, trả về id, user_code, frames_kept
         return JSONResponse(

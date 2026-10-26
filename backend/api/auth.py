@@ -75,6 +75,18 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
             db.commit()
             retry_after_s = auth_service.LOGIN_LOCK_MINUTES * 60
             logger.warning("Tài khoản %s bị khóa tạm thời %s phút do nhập sai 5 lần", staff.username, auth_service.LOGIN_LOCK_MINUTES)
+            try:
+                from services import audit_service
+                audit_service.record(
+                    db,
+                    staff,
+                    "login_locked",
+                    target_type="auth",
+                    target_id=str(staff.id),
+                    detail=f"Khóa tài khoản {auth_service.LOGIN_LOCK_MINUTES} phút do nhập sai 5 lần",
+                )
+            except Exception as e:
+                logger.debug("Lỗi ghi audit login_locked: %s", e)
             return JSONResponse(
                 status_code=423,
                 content={"reason": "locked", "retry_after_s": retry_after_s},
@@ -88,6 +100,20 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     staff.locked_until = None
     staff.last_login_at = now
     db.commit()
+
+    # Ghi audit login thành công
+    try:
+        from services import audit_service
+        audit_service.record(
+            db,
+            staff,
+            "login",
+            target_type="auth",
+            target_id=str(staff.id),
+            detail="Đăng nhập thành công",
+        )
+    except Exception as e:
+        logger.debug("Lỗi ghi audit login: %s", e)
 
     # 6. Tạo phiên đăng nhập và gán cookie HttpOnly
     raw_token, session_record = auth_service.create_session(db, staff.id)
@@ -119,6 +145,21 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     """Đăng xuất tài khoản, thu hồi phiên làm việc trong DB và xóa cookie."""
     raw_token = request.cookies.get("session")
     if raw_token:
+        try:
+            current_user = auth_service.get_session_user(db, raw_token)
+            if current_user:
+                from services import audit_service
+                audit_service.record(
+                    db,
+                    current_user,
+                    "logout",
+                    target_type="auth",
+                    target_id=str(current_user.id),
+                    detail="Đăng xuất",
+                )
+        except Exception as e:
+            logger.debug("Lỗi ghi audit logout: %s", e)
+
         auth_service.revoke_session(db, raw_token)
 
     response.delete_cookie(

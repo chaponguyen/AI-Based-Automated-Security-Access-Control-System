@@ -252,29 +252,32 @@ def delete_logs(
 
     try:
         deleted_count = query.delete(synchronize_session=False)
+
+        # 5. Ghi vết kiểm toán audit_logs TRONG CÙNG TRANSACTION với thao tác xóa
+        audit_detail_parts = [f"Xóa {deleted_count} dòng access_logs"]
+        if has_ids:
+            audit_detail_parts.append(f"{len(payload.ids)} ids")
+        if has_range:
+            audit_detail_parts.append(f"từ {payload.from_time} đến {payload.to_time}")
+
+        from services import audit_service
+        audit_service.record(
+            db,
+            current_staff,
+            "logs_deleted",
+            target_type="access_logs",
+            target_id=None,
+            detail=", ".join(audit_detail_parts),
+            commit=False,
+        )
         db.commit()
     except Exception as e:
         db.rollback()
-        logger.error("Lỗi khi xóa nhật ký ra vào: %s", e)
+        logger.error("Lỗi khi xóa nhật ký ra vào hoặc ghi audit: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"reason": "database_error", "message": "Không thể xóa nhật ký ra vào"},
         )
 
-    # 5. Ghi vết kiểm toán audit_logs (CP-04 sẽ hoàn thiện dịch vụ audit_service)
-    audit_detail_parts = [f"Xóa {deleted_count} dòng access_logs"]
-    if has_ids:
-        audit_detail_parts.append(f"{len(payload.ids)} ids")
-    if has_range:
-        audit_detail_parts.append(f"từ {payload.from_time} đến {payload.to_time}")
-
-    _record_audit(
-        db,
-        current_staff,
-        "logs_deleted",
-        target_type="access_logs",
-        target_id=None,
-        detail=", ".join(audit_detail_parts),
-    )
-
     return {"deleted": deleted_count}
+
