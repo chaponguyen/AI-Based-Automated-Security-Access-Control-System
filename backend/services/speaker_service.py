@@ -2,13 +2,14 @@
 # docs/context/API_CONTRACT.md và docs/plan/MO_TA_CONG_VIEC.md mục B14
 import asyncio
 import ctypes
+from dataclasses import dataclass, field
 import hashlib
 import logging
 import os
 import subprocess
 import threading
 import time
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ SPEAK_RATE = int(os.getenv("SPEAK_RATE", "170"))
 SPEAK_VOLUME = float(os.getenv("SPEAK_VOLUME", "1.0"))
 ALERT_REPEAT = int(os.getenv("ALERT_REPEAT", "2"))
 DEDUP_SECONDS = float(os.getenv("DEDUP_SECONDS", "5.0"))
+MAX_QUEUE_SIZE = 5
 
 # Đường dẫn thư mục lưu đệm âm thanh
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -40,6 +42,133 @@ _voice_checked: bool = False
 _current_alias: Optional[str] = None
 _mci_lock = threading.Lock()
 _stop_playback_flag = False
+_engine_lock = threading.Lock()
+_shutdown_worker = False
+
+
+@dataclass
+class SpeakerTask:
+    priority: int                   # 0: cảnh báo người lạ (cao nhất), 1: thông báo cư dân, 2: test/khác
+    timestamp: float                # thời điểm đưa vào hàng đợi
+    text: str                       # nội dung cần đọc
+    is_alert: bool                  # True: cảnh báo người lạ
+    voice: Optional[str] = None     # Giọng ghi đè (nếu có)
+    enqueued_at: float = field(default_factory=time.time)
+
+
+class SpeakerQueue:
+    """Hàng đợi một luồng có độ ưu tiên, giới hạn tối đa 5 mục (CP-07)."""
+
+    def __init__(self, maxsize: int = MAX_QUEUE_SIZE):
+        self.maxsize = maxsize
+        self._items: List[SpeakerTask] = []
+        self._lock = threading.Lock()
+        self._condition = threading.Condition(self._lock)
+        self._muted = False
+        self._last_spoken_text: str = ""
+        self._last_spoken_time: float = 0.0
+
+    def put(self, task: SpeakerTask) -> bool:
+        """Thêm task vào hàng đợi. Không chặn caller. Trả về True nếu được nhận, False nếu bị bỏ."""
+        with self._condition:
+            if self._muted or not SPEAK_ENABLED:
+                logger.debug("Bỏ qua task vì loa đang tắt hoặc mute: '%s'", task.text)
+                return False
+
+            # Chống lặp DEDUP: Câu giống hệt vừa đọc trong DEDUP_SECONDS thì bỏ
+            now = time.time()
+            if task.text == self._last_spoken_text and (now - self._last_spoken_time) < DEDUP_SECONDS:
+                logger.debug("DEDUP: Bỏ qua câu giống hệt vừa đọc trong %.1fs: '%s'", DEDUP_SECONDS, task.text)
+                return False
+
+            # Chống lặp câu đang nằm trong hàng đợi chờ đọc
+            for it in self._items:
+                if it.text == task.text:
+                    logger.debug("DEDUP: Câu '%s' đã có trong hàng đợi, bỏ qua.", task.text)
+                    return False
+
+            # Hàng đợi tối đa 5 mục: nếu đầy thì bỏ mục ưu tiên thấp nhất cũ nhất
+            if len(self._items) >= self.maxsize:
+                worst_idx = -1
+                worst_prio = -1
+                worst_time = float("inf")
+                for i, it in enumerate(self._items):
+                    # priority lớn hơn nghĩa là ưu tiên kém hơn
+                    if it.priority > worst_prio or (it.priority == worst_prio and it.timestamp < worst_time):
+                        worst_prio = it.priority
+                        worst_time = it.timestamp
+                        worst_idx = i
+
+                # Nếu task mới có ưu tiên còn thấp hơn mục kém nhất hiện tại
+                if task.priority > worst_prio:
+                    logger.warning("Hàng đợi loa đầy (5 mục) và task mới có ưu tiên thấp hơn, bỏ qua: '%s'", task.text)
+                    return False
+
+                dropped = self._items.pop(worst_idx)
+                logger.warning(
+                    "Hàng đợi loa đầy (5 mục), loại bỏ mục ưu tiên thấp nhất cũ nhất: '%s' (prio=%d)",
+                    dropped.text, dropped.priority
+                )
+
+            self._items.append(task)
+            self._condition.notify()
+            return True
+
+    def get(self, timeout: float = 1.0) -> Optional[SpeakerTask]:
+        """Lấy task có độ ưu tiên cao nhất (priority nhỏ nhất, FIFO khi cùng priority)."""
+        with self._condition:
+            while len(self._items) == 0:
+                if _shutdown_worker:
+                    return None
+                self._condition.wait(timeout=timeout)
+                if _shutdown_worker:
+                    return None
+
+            if self._muted:
+                self._items.clear()
+                return None
+
+            # Tìm mục có priority nhỏ nhất, nếu bằng nhau thì timestamp nhỏ nhất
+            best_idx = 0
+            best_task = self._items[0]
+            for i in range(1, len(self._items)):
+                it = self._items[i]
+                if (it.priority, it.timestamp) < (best_task.priority, best_task.timestamp):
+                    best_task = it
+                    best_idx = i
+
+            return self._items.pop(best_idx)
+
+    def clear(self):
+        """Xóa toàn bộ hàng đợi."""
+        with self._condition:
+            self._items.clear()
+            self._condition.notify_all()
+
+    def set_muted(self, muted: bool):
+        """Cập nhật cờ mute. Nếu muted=True thì xóa sạch hàng đợi."""
+        with self._condition:
+            self._muted = bool(muted)
+            if self._muted:
+                self._items.clear()
+            self._condition.notify_all()
+
+    def is_muted(self) -> bool:
+        with self._lock:
+            return self._muted
+
+    def size(self) -> int:
+        with self._lock:
+            return len(self._items)
+
+    def record_spoken(self, text: str):
+        """Ghi nhận câu đã đọc thành công để phục vụ dedup."""
+        with self._lock:
+            self._last_spoken_text = text
+            self._last_spoken_time = time.time()
+
+
+_speaker_queue = SpeakerQueue(maxsize=MAX_QUEUE_SIZE)
 
 
 def find_vietnamese_voice() -> Optional[str]:
@@ -127,7 +256,6 @@ def _play_mp3_mci(mp3_path: str, timeout_sec: float = 15.0) -> bool:
     with _mci_lock:
         _stop_playback_flag = False
         _current_alias = alias
-        # Đóng alias cũ nếu còn
         ctypes.windll.winmm.mciSendStringW(f"close {alias}", None, 0, None)
         open_cmd = f'open "{mp3_path}" type mpegvideo alias {alias}'
         res = ctypes.windll.winmm.mciSendStringW(open_cmd, None, 0, None)
@@ -137,14 +265,12 @@ def _play_mp3_mci(mp3_path: str, timeout_sec: float = 15.0) -> bool:
             return False
 
     try:
-        # Bắt đầu phát không chặn
         play_cmd = f"play {alias}"
         res = ctypes.windll.winmm.mciSendStringW(play_cmd, None, 0, None)
         if res != 0:
             logger.warning("Không thể phát MP3 qua MCI: mã lỗi %s", res)
             return False
 
-        # Vòng lặp chờ phát xong, cho phép ngắt ngay khi có yêu cầu dừng
         start_t = time.time()
         buf = ctypes.create_unicode_buffer(128)
         while not _stop_playback_flag:
@@ -186,7 +312,6 @@ def synthesize_edge_tts(text: str, output_path: str, voice: Optional[str] = None
     if not voice:
         voice = SPEAK_VOICE_ID or "vi-VN-NamMinhNeural"
 
-    # Đảm bảo chữ tiếng Việt có dấu được truyền nguyên vẹn qua đối tượng Python
     try:
         import edge_tts  # noqa: F401
     except ImportError:
@@ -262,9 +387,10 @@ def speak(text: str, is_alert: bool = False, voice_override: Optional[str] = Non
       ghi log speaker_unavailable, phát tiếng bíp cảnh báo, trả False và thử lại ở câu sau.
     - Giữ timeout cứng 8 giây cho tổng hợp để không treo luồng.
     - Câu cảnh báo người lạ cố định ưu tiên lấy từ cache offline weights/tts/.
+    - An toàn luồng: _engine_lock bảo đảm không bao giờ đọc chồng.
     """
-    if not SPEAK_ENABLED:
-        logger.debug("Loa đang tắt (SPEAK_ENABLED=false)")
+    if not SPEAK_ENABLED or _speaker_queue.is_muted():
+        logger.debug("Loa đang tắt hoặc mute")
         return False
 
     if not text or not str(text).strip():
@@ -272,71 +398,167 @@ def speak(text: str, is_alert: bool = False, voice_override: Optional[str] = Non
 
     text_clean = str(text).strip()
 
-    # Nếu là cảnh báo người lạ: phát 3 tiếng bíp ngắn trước
-    if is_alert:
-        play_beep(freq=1200, duration_ms=120, count=3)
+    with _engine_lock:
+        if _stop_playback_flag or _speaker_queue.is_muted():
+            return False
 
-    repeats = ALERT_REPEAT if is_alert else 1
-    voice = voice_override or find_vietnamese_voice()
+        # Nếu là cảnh báo người lạ: phát 3 tiếng bíp ngắn trước
+        if is_alert:
+            play_beep(freq=1200, duration_ms=120, count=3)
 
-    # ==================== ENGINE EDGE-TTS ====================
-    if SPEAK_ENGINE == "edge":
-        if not voice:
-            voice = "vi-VN-NamMinhNeural"
+        repeats = ALERT_REPEAT if is_alert else 1
+        voice = voice_override or find_vietnamese_voice()
 
-        # 1. Trường hợp câu cảnh báo người lạ: ưu tiên file cache tiền tổng hợp
-        audio_file = None
-        if text_clean == STRANGER_ALERT_TEXT or is_alert:
-            if os.path.exists(STRANGER_CACHE_FILE) and os.path.getsize(STRANGER_CACHE_FILE) > 1000:
-                audio_file = STRANGER_CACHE_FILE
+        # ==================== ENGINE EDGE-TTS ====================
+        if SPEAK_ENGINE == "edge":
+            if not voice:
+                voice = "vi-VN-NamMinhNeural"
 
-        # 2. Nếu chưa có file cache, tạo file mp3 theo hash md5 nội dung
-        if not audio_file:
-            text_hash = hashlib.md5(f"{voice}_{SPEAK_RATE}_{text_clean}".encode("utf-8")).hexdigest()
-            temp_path = os.path.join(OUT_TTS_DIR, f"{text_hash}.mp3")
+            # 1. Trường hợp câu cảnh báo người lạ: ưu tiên file cache tiền tổng hợp
+            audio_file = None
+            if text_clean == STRANGER_ALERT_TEXT or is_alert:
+                if os.path.exists(STRANGER_CACHE_FILE) and os.path.getsize(STRANGER_CACHE_FILE) > 1000:
+                    audio_file = STRANGER_CACHE_FILE
 
-            if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1000:
-                audio_file = temp_path
-            else:
-                ok = synthesize_edge_tts(text_clean, temp_path, voice=voice, timeout_sec=8.0)
-                if ok:
+            # 2. Nếu chưa có file cache, tạo file mp3 theo hash md5 nội dung
+            if not audio_file:
+                text_hash = hashlib.md5(f"{voice}_{SPEAK_RATE}_{text_clean}".encode("utf-8")).hexdigest()
+                temp_path = os.path.join(OUT_TTS_DIR, f"{text_hash}.mp3")
+
+                if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1000:
                     audio_file = temp_path
+                else:
+                    ok = synthesize_edge_tts(text_clean, temp_path, voice=voice, timeout_sec=8.0)
+                    if ok:
+                        audio_file = temp_path
 
-        # 3. Nếu tổng hợp thất bại (mất mạng, lỗi engine): ghi log, phát bíp, trả False
-        if not audio_file or not os.path.exists(audio_file):
-            logger.warning(
-                "speaker_unavailable: Không thể phát âm thanh tiếng Việt bằng edge-tts (lỗi kết nối hoặc timeout), thử lại ở câu sau."
-            )
+            # 3. Nếu tổng hợp thất bại (mất mạng, lỗi engine): ghi log, phát bíp, trả False
+            if not audio_file or not os.path.exists(audio_file):
+                logger.warning(
+                    "speaker_unavailable: Không thể phát âm thanh tiếng Việt bằng edge-tts (lỗi kết nối hoặc timeout), thử lại ở câu sau."
+                )
+                play_beep(freq=800, duration_ms=250, count=1)
+                return False
+
+            # 4. Phát file MP3 qua MCI
+            success = True
+            for _ in range(repeats):
+                if _stop_playback_flag or _speaker_queue.is_muted():
+                    break
+                ok = _play_mp3_mci(audio_file)
+                if not ok:
+                    success = False
+
+            return success
+
+        # ==================== ENGINE SAPI5 ====================
+        if not voice:
+            logger.warning("speaker_unavailable: Máy chưa cài đặt giọng tiếng Việt, bỏ qua đọc để không đọc sai/đánh vần.")
             play_beep(freq=800, duration_ms=250, count=1)
             return False
 
-        # 4. Phát file MP3 qua MCI
         success = True
         for _ in range(repeats):
-            if _stop_playback_flag:
+            if _stop_playback_flag or _speaker_queue.is_muted():
                 break
-            ok = _play_mp3_mci(audio_file)
+            ok = _speak_sapi5(text_clean, voice)
+            if not ok:
+                ok = _speak_sapi5(text_clean, voice)
             if not ok:
                 success = False
 
         return success
 
-    # ==================== ENGINE SAPI5 ====================
-    if not voice:
-        logger.warning("speaker_unavailable: Máy chưa cài đặt giọng tiếng Việt, bỏ qua đọc để không đọc sai/đánh vần.")
-        play_beep(freq=800, duration_ms=250, count=1)
+
+def _speaker_worker_loop():
+    """Luồng đọc riêng biệt của loa (CP-07). Lấy task từ hàng đợi và gọi engine."""
+    logger.info("Luồng xử lý loa thông báo một luồng đã khởi chạy.")
+    while not _shutdown_worker:
+        try:
+            task = _speaker_queue.get(timeout=1.0)
+            if task is None:
+                continue
+
+            if _speaker_queue.is_muted() or not SPEAK_ENABLED:
+                continue
+
+            # Đo thời gian từ lúc đưa vào hàng đợi đến lúc bắt đầu phát
+            queue_latency_ms = (time.time() - task.enqueued_at) * 1000
+            logger.info(
+                "Loa bắt đầu phát (độ trễ hàng đợi: %.1f ms, alert=%s, prio=%d): '%s'",
+                queue_latency_ms, task.is_alert, task.priority, task.text
+            )
+
+            # Chỉ luồng loa được gọi engine
+            ok = speak(task.text, is_alert=task.is_alert, voice_override=task.voice)
+            if ok:
+                _speaker_queue.record_spoken(task.text)
+        except Exception as e:
+            logger.error("Lỗi trong luồng loa: %s", e, exc_info=True)
+            time.sleep(0.1)
+
+
+# ==================== CÁC HÀM CÔNG KHAI (CP-07) ====================
+
+def enqueue_speak(
+    text: str,
+    is_alert: bool = False,
+    priority: Optional[int] = None,
+    voice_override: Optional[str] = None
+) -> bool:
+    """Đưa câu thông báo vào hàng đợi một luồng cho loa (CP-07). Không chặn vòng lặp AI.
+
+    Quy tắc:
+    - Cảnh báo người lạ: priority = 0 (ưu tiên cao nhất).
+    - Cư dân / thông báo thường: priority = 1.
+    - Không chặn luồng gọi (trả về bool ngay).
+    - Câu giống hệt vừa đọc trong DEDUP_SECONDS thì bỏ.
+    - Hàng đợi tối đa 5 mục, đầy thì bỏ mục ưu tiên thấp nhất cũ nhất.
+    """
+    if not text or not str(text).strip():
         return False
 
-    success = True
-    for _ in range(repeats):
-        ok = _speak_sapi5(text_clean, voice)
-        if not ok:
-            ok = _speak_sapi5(text_clean, voice)
-        if not ok:
-            success = False
+    if priority is None:
+        priority = 0 if is_alert else 1
 
-    return success
+    task = SpeakerTask(
+        priority=priority,
+        timestamp=time.time(),
+        text=str(text).strip(),
+        is_alert=is_alert,
+        voice=voice_override,
+        enqueued_at=time.time(),
+    )
+    return _speaker_queue.put(task)
 
 
-# Tiền tổng hợp câu cảnh báo người lạ trong background thread khi nạp module
+def set_muted(muted: bool) -> bool:
+    """Bật/tắt chế độ im lặng của loa (CP-07).
+    Khi muted=True: dừng đọc ngay lập tức và xóa sạch hàng đợi.
+    """
+    _speaker_queue.set_muted(muted)
+    if muted:
+        stop_playback()
+    logger.info("Chế độ loa: %s", "TẮT TIẾNG (muted=True)" if muted else "BẬT TIẾNG (muted=False)")
+    return _speaker_queue.is_muted()
+
+
+def is_muted() -> bool:
+    """Kiểm tra trạng thái loa có đang bị mute hay không."""
+    return _speaker_queue.is_muted()
+
+
+def get_speaker_status() -> Dict[str, Any]:
+    """Trả về trạng thái loa theo API_CONTRACT: {enabled, muted, voice, queue}."""
+    return {
+        "enabled": SPEAK_ENABLED,
+        "muted": _speaker_queue.is_muted(),
+        "voice": SPEAK_VOICE_ID or find_vietnamese_voice() or "",
+        "queue": _speaker_queue.size(),
+    }
+
+
+# Khởi chạy luồng loa nền và tiền tổng hợp cache
 threading.Thread(target=preload_alert_cache, daemon=True, name="preload_alert_tts").start()
+_speaker_worker_thread = threading.Thread(target=_speaker_worker_loop, daemon=True, name="speaker_worker")
+_speaker_worker_thread.start()
