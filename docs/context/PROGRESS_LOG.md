@@ -84,3 +84,4 @@
 - 2026-10-26 10:07 [B14] CP-08 (backend/api/speaker.py; backend/main.py; backend/services/speaker_service.py): Noi su kien access_result tu B12 qua callback handle_access_result; tao route POST /api/speaker/test, POST /mute, GET /status dung def thuong khong chan event loop
 - 2026-10-26 10:10 [B14] CP-09 (backend/services/speaker_service.py; backend/services/speaker_text.py): Sinh va do thoi luong 10 cau mau tieng Viet out/b14_sample_*.mp3, cau dai nhat 6.82s (mau 07), ghi bang nghiem thu va tong ket B14 kem 3 cau hoi hoi dong
 - 2026-10-26 15:18 [B15] CP-01 (backend/database/models.py; backend/migrations/versions/7e3d1a8c9012_b15_staff_accounts_sessions_audit_logs.py): Thiet ke va tao migration 3 bang staff_accounts, staff_sessions, audit_logs
+- 2026-10-26 15:23 [B15] CP-02 (backend/services/auth_service.py; backend/.env.example): Trien khai auth_service.py: bam scrypt, so khop hmac, quan ly phien sha256 va cau hinh moi truong
