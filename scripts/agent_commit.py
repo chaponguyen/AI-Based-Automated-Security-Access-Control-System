@@ -16,7 +16,7 @@ ALLOWED = {
     "A1": ["backend/ai", "scripts/measure_pairs.py", "scripts/measure_liveness.py"],
     "A2": ["backend/api", "backend/services", "backend/database", "backend/migrations",
            "backend/alembic.ini", "backend/main.py", "backend/.env.example",
-           "scripts/tts_probe.py"],
+           "scripts/tts_probe.py", "requirements.txt"],
     "A3": ["frontend/src"],
     "A4": ["embedded"],
     "A5": ["esp32-cam"],
