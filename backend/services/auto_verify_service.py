@@ -597,6 +597,20 @@ class AutoVerifyService:
                     self._resident_cooldown[target_user_id] = now
                     track.user_id = target_user_id
                     track.last_decision = decision_type
+
+                # Tự động mở cửa 10 giây khi cư dân được cấp quyền truy cập (granted)
+                if decision_type == "granted":
+                    try:
+                        from services.door_service import get_door_service
+                        door_svc = get_door_service()
+                        u_info = final_res.get("user") or {}
+                        u_name = u_info.get("full_name") or "Cư dân"
+                        apt = u_info.get("apartment_number") or ""
+                        reason_msg = f"Cư dân {u_name}" + (f" ({apt})" if apt else "") + " xác thực thành công"
+                        door_svc.open(by=u_name, reason=reason_msg)
+                        logger.info("AutoVerifyService: Đã tự động mở cửa 10 giây cho %s", u_name)
+                    except Exception as door_err:
+                        logger.warning("AutoVerifyService: Không thể tự động mở cửa: %s", door_err)
             elif decision_type == "stranger":
                 self._last_stranger_alert_at = now
                 track.last_decision = "stranger"

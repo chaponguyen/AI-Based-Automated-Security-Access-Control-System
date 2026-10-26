@@ -64,4 +64,15 @@ def verify_face_api(
     # Ghi nhận nhật ký truy cập vào CSDL (bỏ qua nếu không có mặt - no_face)
     record_access(db, result)
 
+    # Tự động mở cửa 10 giây khi xác thực thành công (granted)
+    if result.get("decision") == "granted":
+        try:
+            from services.door_service import get_door_service
+            door_svc = get_door_service()
+            u_info = result.get("user") or {}
+            u_name = u_info.get("full_name") or "Cư dân"
+            door_svc.open(by=u_name, reason=f"Xác thực ảnh: {u_name}")
+        except Exception as door_err:
+            logger.warning("Verify API: Không thể tự động mở cửa: %s", door_err)
+
     return result
