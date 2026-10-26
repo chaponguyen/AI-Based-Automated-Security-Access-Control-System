@@ -90,3 +90,4 @@
 - 2026-10-26 15:49 [B15] CP-05 (scripts/create_manager.py): Trien khai script tao tai khoan manager dau tien scripts/create_manager.py an toan qua getpass khong in mat khau
 - 2026-10-26 15:51 [B15] CP-06 (docs/reports/B15.md): Kiem thu tich hop 3 trang thai x cac route (chua dang nhap, security, manager), co che khoa, timing attack, thu hoi phien va tong ket B15
 - 2026-10-26 19:30 [B16] CP-01 (backend/api/staff.py; backend/main.py; backend/services/auth_service.py): Triển khai backend/api/staff.py quản lý nhân viên, kiểm tra định dạng, luật self_protected và last_manager, thu hồi phiên khi đổi mật khẩu/vai trò/tắt tài khoản
+- 2026-10-26 19:44 [B16] CP-02 (backend/api/residents.py): Triển khai route DELETE /api/residents/{id}: xóa user (cascade embeddings, set null access_logs) và nạp lại GalleryCache ngay lập tức

@@ -1,5 +1,6 @@
+import logging
 import re
-from typing import List, Literal
+from typing import Any, List, Literal, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Form, status
 from fastapi.responses import JSONResponse
@@ -7,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from database.database import get_db
-from database.models import User, FaceEmbedding
+from database.models import User, FaceEmbedding, StaffAccount
 from services.registration_service import (
     registration_lock,
     record_registration_frames,
@@ -19,8 +20,33 @@ from services.registration_service import (
 
 from api.deps import require_staff, require_manager
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/residents", tags=["residents"])
 registration_router = APIRouter(prefix="/api/registration", tags=["registration"], dependencies=[Depends(require_staff)])
+
+
+def _record_audit(
+    db: Session,
+    staff: Any,
+    action: str,
+    target_type: Optional[str] = None,
+    target_id: Optional[str] = None,
+    detail: Optional[str] = None,
+) -> None:
+    """Ghi vết kiểm toán an toàn (CP-04 sẽ hoàn thiện dịch vụ audit_service)."""
+    try:
+        from services import audit_service
+        audit_service.record(
+            db,
+            staff=staff,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            detail=detail,
+        )
+    except Exception as e:
+        logger.debug("Chưa nối audit_service hoặc ghi audit thất bại: %s", e)
 
 
 @registration_router.get("/precheck")
@@ -245,10 +271,75 @@ def update_resident_status(
     )
 
 
+class ResidentDeleteInfo(BaseModel):
+    id: int
+    user_code: str
+    full_name: str
+
+
+class ResidentDeleteResponse(BaseModel):
+    ok: bool = True
+    deleted: ResidentDeleteInfo
+
+
+@router.delete("/{id}", response_model=ResidentDeleteResponse, dependencies=[Depends(require_manager)])
+def delete_resident(
+    id: int,
+    current_staff: StaffAccount = Depends(require_manager),
+    db: Session = Depends(get_db),
+):
+    """Xóa cư dân và nạp lại GalleryCache ngay lập tức (B16 CP-02).
+    
+    - Xóa User (FaceEmbedding tự động xóa theo CASCADE, AccessLog giữ lại với user_id=NULL).
+    - Nạp lại GalleryCache NGAY để khuôn mặt đó không còn được nhận diện.
+    - Trả về 200 {"ok": true, "deleted": {"id": id, "user_code": user_code, "full_name": full_name}}.
+    - Không tìm thấy id trả 404 {"reason": "not_found"}.
+    """
+    user = db.query(User).filter(User.id == id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"reason": "not_found"},
+        )
+
+    deleted_info = {
+        "id": user.id,
+        "user_code": user.user_code or f"USR{user.id:06d}",
+        "full_name": user.full_name,
+    }
+
+    db.delete(user)
+    db.commit()
+
+    # Nạp lại GalleryCache ngay lập tức để đồng bộ bộ nhớ nhận diện
+    try:
+        from services import gallery_cache
+        gallery_cache.reload(db)
+        logger.info("Đã xóa cư dân %s (id=%s) và nạp lại GalleryCache thành công", deleted_info["full_name"], id)
+    except Exception as e:
+        logger.error("Lỗi khi nạp lại GalleryCache sau khi xóa cư dân %s: %s", id, e)
+
+    # Ghi nhận audit log (CP-04 sẽ hoàn thiện dịch vụ audit_service)
+    _record_audit(
+        db,
+        current_staff,
+        "resident_deleted",
+        target_type="resident",
+        target_id=str(deleted_info["id"]),
+        detail=f"Xóa cư dân {deleted_info['full_name']} ({deleted_info['user_code']})",
+    )
+
+    return {
+        "ok": True,
+        "deleted": deleted_info,
+    }
+
+
 class ResidentCreateResponse(BaseModel):
     id: int
     user_code: str
     frames_kept: int
+
 
 
 @router.post(
