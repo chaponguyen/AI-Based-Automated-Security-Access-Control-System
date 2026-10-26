@@ -558,6 +558,37 @@ def get_speaker_status() -> Dict[str, Any]:
     }
 
 
+def handle_access_result(event_name: str, event_data: dict) -> None:
+    """Callback nhận sự kiện từ AutoVerifyService (B12) để phát âm qua loa (CP-08).
+
+    Quy tắc:
+    - Chỉ xử lý event 'access_result'.
+    - Loa chỉ đọc announcement.spoken (giao diện dùng announcement.display).
+    - Cảnh báo người lạ: kind == 'stranger' hoặc (denied và reason != 'inactive_user') -> is_alert=True (prio 0).
+    - Cư dân granted hoặc inactive: is_alert=False (prio 1).
+    - Đưa vào hàng đợi qua enqueue_speak, không chặn vòng lặp AI.
+    """
+    if event_name != "access_result" or not isinstance(event_data, dict):
+        return
+
+    ann = event_data.get("announcement")
+    if not isinstance(ann, dict):
+        return
+
+    spoken_text = ann.get("spoken")
+    if not spoken_text or not str(spoken_text).strip():
+        return
+
+    kind = ann.get("kind", "")
+    decision = event_data.get("decision", "")
+    reason = event_data.get("reason", "")
+
+    is_alert = (kind == "stranger") or (decision == "denied" and reason != "inactive_user")
+    priority = 0 if is_alert else 1
+
+    enqueue_speak(str(spoken_text).strip(), is_alert=is_alert, priority=priority)
+
+
 # Khởi chạy luồng loa nền và tiền tổng hợp cache
 threading.Thread(target=preload_alert_cache, daemon=True, name="preload_alert_tts").start()
 _speaker_worker_thread = threading.Thread(target=_speaker_worker_loop, daemon=True, name="speaker_worker")

@@ -66,10 +66,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Không thể khởi động vòng lặp xác thực nền B12: %s", e)
 
+    # (5) Đăng ký callback loa nhận sự kiện từ AutoVerifyService (B14 CP-08)
+    try:
+        from services import speaker_service
+        auto_verify_service.set_event_callback(speaker_service.handle_access_result)
+        logger.info("Đã kết nối callback loa thông báo (B14) với AutoVerifyService (B12).")
+    except Exception as e:
+        logger.warning("Không thể kết nối callback loa: %s", e)
+
     yield
 
     # Dọn dẹp khi tắt hệ thống (shutdown)
     logger.info("Đang tắt hệ thống và giải phóng tài nguyên...")
+    try:
+        from services import speaker_service
+        speaker_service.stop_playback()
+    except Exception:
+        pass
+
     try:
         from services import auto_verify_service
         auto_verify_service.stop()
@@ -96,8 +110,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api import residents, verify, logs, ws, camera, stream
-for r in (residents.router, residents.registration_router, verify.router, logs.router, ws.router, camera.router, stream.router):
+from api import residents, verify, logs, ws, camera, stream, speaker
+for r in (residents.router, residents.registration_router, verify.router, logs.router, ws.router, camera.router, stream.router, speaker.router):
     app.include_router(r)
 
 
