@@ -1,10 +1,14 @@
 // Agent 3 — Thêm cư dân kèm đăng ký khuôn mặt, danh sách và bật/tắt quyền ra vào.
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import LiveStream from '../components/LiveStream.jsx'
 import RecordProgress from '../components/RecordProgress.jsx'
+import Button from '../components/ui/Button.jsx'
+import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
+import ErrorState from '../components/ui/ErrorState.jsx'
 import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
 import { api, getApiErrorMessage } from '../services/api.js'
-import { mockRegisterEnabled, mockRegisterResident, mockRegistrationPrecheck, PREPARE_SECONDS } from '../services/mock.js'
+import { mockAdminEnabled, mockDeleteResident, mockIsResidentDeleted, mockRegisterEnabled, mockRegisterResident, mockRegistrationPrecheck, PREPARE_SECONDS } from '../services/mock.js'
 
 const emptyForm = { full_name: '', age: '', apartment_number: '' }
 
@@ -29,6 +33,8 @@ function validateResidentForm(form) {
 }
 
 export default function Residents() {
+  const { user } = useOutletContext() || {}
+  const isManager = user?.role === 'manager'
   const { connected, cameraStatus, recording } = useDashboardSocket()
   const [form, setForm] = useState(emptyForm)
   const [errors, setErrors] = useState({})
@@ -50,6 +56,9 @@ export default function Residents() {
   const [pendingIds, setPendingIds] = useState(() => new Set())
   const [listNotice, setListNotice] = useState('')
   const [listNoticeError, setListNoticeError] = useState(false)
+  const [residentToDelete, setResidentToDelete] = useState(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const registrationPhaseRef = useRef('idle')
   const registrationRequestStartedRef = useRef(false)
   const prepareTimerRef = useRef(null)
@@ -255,7 +264,7 @@ export default function Residents() {
     setResidentsError('')
     try {
       const { data } = await api.get('/residents')
-      setResidents(Array.isArray(data) ? data : [])
+      setResidents(Array.isArray(data) ? data.filter((resident) => !mockAdminEnabled || !mockIsResidentDeleted(resident.id)) : [])
     } catch (error) {
       setResidentsError(getApiErrorMessage(error, 'Không tải được danh sách cư dân.'))
     } finally {
@@ -442,6 +451,35 @@ export default function Residents() {
     }
   }
 
+  const deleteResident = async () => {
+    if (!residentToDelete || !isManager || deleteSubmitting) return
+    setDeleteSubmitting(true)
+    setDeleteError('')
+    try {
+      if (residentToDelete.isMock) {
+        await mockDeleteResident(residentToDelete.id, residentToDelete)
+      } else if (mockAdminEnabled) {
+        await mockDeleteResident(residentToDelete.id, residentToDelete)
+      } else {
+        await api.delete(`/residents/${residentToDelete.id}`)
+      }
+      setMockResidents((items) => items.filter((item) => item.id !== residentToDelete.id))
+      setResidents((items) => items.filter((item) => item.id !== residentToDelete.id))
+      setPendingIds((current) => {
+        const next = new Set(current)
+        next.delete(residentToDelete.id)
+        return next
+      })
+      setListNotice(`Đã xóa cư dân ${residentToDelete.full_name} (${residentToDelete.user_code || `USR${String(residentToDelete.id).padStart(6, '0')}`}).`)
+      setListNoticeError(false)
+      setResidentToDelete(null)
+    } catch (error) {
+      setDeleteError(getApiErrorMessage(error, 'Không xóa được cư dân. Vui lòng thử lại.'))
+    } finally {
+      setDeleteSubmitting(false)
+    }
+  }
+
   return (
     <main className="page residents-page">
       <header className="page-header">
@@ -452,7 +490,7 @@ export default function Residents() {
         </div>
       </header>
 
-      <div className="resident-registration-layout">
+      {isManager && <div className="resident-registration-layout">
         <section className="panel resident-preview-panel">
           <div className="section-heading">
             <div><p className="eyebrow">CĂN CHỈNH KHUÔN MẶT</p><h2>Xem trước camera</h2></div>
@@ -559,12 +597,12 @@ export default function Residents() {
           </div>
         </form>
         </section>
-      </div>
+      </div>}
 
       <section className="panel resident-list-panel">
         <div className="section-heading resident-list-heading">
           <div><p className="eyebrow">DANH SÁCH</p><h2>Cư dân đã đăng ký</h2></div>
-          <button type="button" onClick={() => void refreshResidents()} disabled={residentsLoading}>Làm mới</button>
+          <Button variant="secondary" size="sm" onClick={() => void refreshResidents()} disabled={residentsLoading}>Làm mới</Button>
         </div>
         <label className="resident-search" htmlFor="resident-search">
           <span>Tìm theo tên hoặc căn hộ</span>
@@ -579,8 +617,8 @@ export default function Residents() {
         )}
         {filteredResidents.length > 0 && (
           <div className="table-wrap">
-            <table className="resident-table">
-              <thead><tr><th>Mã cư dân</th><th>Họ và tên</th><th>Tuổi</th><th>Căn hộ</th><th>Số khung</th><th>Trạng thái</th><th>Quyền ra vào</th></tr></thead>
+            <table className={`resident-table${isManager ? ' resident-table--manager' : ''}`}>
+              <thead><tr><th>Mã cư dân</th><th>Họ và tên</th><th>Tuổi</th><th>Căn hộ</th><th>Số khung</th><th>Trạng thái</th>{isManager && <><th>Quyền ra vào</th><th>Thao tác</th></>}</tr></thead>
               <tbody>{filteredResidents.map((resident) => (
                 <tr key={`${resident.isMock ? 'mock' : 'resident'}-${resident.id}`}>
                   <td>{resident.user_code || `USR${String(resident.id).padStart(6, '0')}`}{resident.isMock && <small className="mock-label"> Mô phỏng</small>}</td>
@@ -589,7 +627,10 @@ export default function Residents() {
                   <td>{resident.apartment_number}</td>
                   <td>{resident.frames ?? resident.frames_kept ?? 0}</td>
                   <td><span className={`status-chip ${resident.status === 'active' ? 'status-chip--good' : 'status-chip--warning'}`}>{resident.status === 'active' ? 'Đang hoạt động' : 'Đã tắt'}</span></td>
-                  <td><button type="button" className="button-small" disabled={pendingIds.has(resident.id)} onClick={() => void toggleResidentStatus(resident)}>{pendingIds.has(resident.id) ? 'Đang lưu…' : resident.status === 'active' ? 'Tắt quyền' : 'Bật quyền'}</button></td>
+                  {isManager && <>
+                    <td><Button variant="secondary" size="sm" disabled={pendingIds.has(resident.id)} onClick={() => void toggleResidentStatus(resident)}>{pendingIds.has(resident.id) ? 'Đang lưu…' : resident.status === 'active' ? 'Tắt quyền' : 'Bật quyền'}</Button></td>
+                    <td><Button variant="danger" size="sm" onClick={() => { setDeleteError(''); setResidentToDelete(resident) }}>Xóa</Button></td>
+                  </>}
                 </tr>
               ))}</tbody>
             </table>
@@ -597,6 +638,21 @@ export default function Residents() {
         )}
         {listNotice && <p className={listNoticeError ? 'form-notice form-notice--error' : 'form-notice'} role="status">{listNotice}</p>}
       </section>
+
+      <ConfirmDialog
+        open={Boolean(residentToDelete)}
+        onClose={() => { if (!deleteSubmitting) setResidentToDelete(null) }}
+        onConfirm={() => void deleteResident()}
+        title="Xóa cư dân?"
+        description={residentToDelete ? `${residentToDelete.full_name} · ${residentToDelete.user_code || `USR${String(residentToDelete.id).padStart(6, '0')}`}` : ''}
+        confirmLabel="Xóa cư dân"
+        cancelLabel="Hủy"
+        loading={deleteSubmitting}
+        danger
+      >
+        <p className="resident-delete-warning">Thao tác này xóa cả khuôn mặt đã lưu và không thể hoàn tác.</p>
+        {deleteError && <ErrorState message={deleteError} />}
+      </ConfirmDialog>
 
       {duplicateResident && (
         <div className="resident-modal-backdrop">

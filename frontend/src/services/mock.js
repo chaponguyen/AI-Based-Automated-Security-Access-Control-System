@@ -1,6 +1,7 @@
 // Các cờ mock chỉ bật khi Vite nhận giá trị "1" trong file môi trường.
 export const mockRegisterEnabled = import.meta.env.VITE_MOCK_REGISTER === '1'
 export const mockEventsEnabled = import.meta.env.VITE_MOCK_EVENTS === '1'
+// TODO(B17): bỏ mock quản trị sau khi backend B15/B16 sẵn sàng.
 export const mockAdminEnabled = import.meta.env.VITE_MOCK_ADMIN === '1'
 const configuredPrepareSeconds = Number(import.meta.env.VITE_REGISTER_PREPARE_SECONDS)
 export const PREPARE_SECONDS = Number.isFinite(configuredPrepareSeconds) && configuredPrepareSeconds >= 1
@@ -8,6 +9,7 @@ export const PREPARE_SECONDS = Number.isFinite(configuredPrepareSeconds) && conf
   : 5
 
 let mockResidentId = 900000
+const mockDeletedResidentIds = new Set()
 let mockDoorUntil = 0
 let mockDoorTimer = null
 
@@ -15,6 +17,7 @@ function dispatchMockDoorState(data) {
   window.dispatchEvent(new CustomEvent('dashboard:mock-event', { detail: { event: 'door_state', data } }))
 }
 
+// TODO(B17): thay mock trạng thái cửa bằng GET /api/door/status sau khi B16 sẵn sàng.
 export async function mockGetDoorStatus() {
   const isOpen = mockDoorUntil > Date.now()
   return {
@@ -24,6 +27,7 @@ export async function mockGetDoorStatus() {
   }
 }
 
+// TODO(B17): thay mock mở cửa bằng POST /api/door/open sau khi B16 sẵn sàng.
 export async function mockOpenDoor(reason = '') {
   if (mockDoorUntil > Date.now()) {
     return { ...(await mockGetDoorStatus()), open_seconds: Math.ceil((mockDoorUntil - Date.now()) / 1000), already_open: true }
@@ -46,6 +50,23 @@ export async function mockOpenDoor(reason = '') {
     dispatchMockDoorState({ state: 'closed', until: null, open_seconds: 0, by: null, reason: null })
   }, 10000)
   return openState
+}
+
+export async function mockDeleteResident(id, resident = {}) {
+  // TODO(B17): thay bằng DELETE /api/residents/{id} khi backend quản trị sẵn sàng.
+  mockDeletedResidentIds.add(Number(id))
+  return {
+    ok: true,
+    deleted: {
+      id: Number(id),
+      user_code: resident.user_code || `USR${String(id).padStart(6, '0')}`,
+      full_name: resident.full_name || '',
+    },
+  }
+}
+
+export function mockIsResidentDeleted(id) {
+  return mockDeletedResidentIds.has(Number(id))
 }
 
 export async function mockRegistrationPrecheck(fullName) {

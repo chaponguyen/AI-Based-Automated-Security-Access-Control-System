@@ -299,6 +299,8 @@ tbody tr:last-child td { border-bottom: 0; }
 .button-small { min-height: 34px; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
 .mock-label { display: inline-block; color: var(--warn); font-size: 10px; }
 .resident-table { min-width: 720px; }
+.resident-table--manager { min-width: 920px; }
+.resident-delete-warning { margin: 0; color: var(--bad); font-size: var(--text-sm); line-height: 1.55; }
 .resident-list-panel > .form-notice { margin-top: 2px; }
 .logs-panel { display: grid; gap: 18px; }
 .logs-filters { display: grid; grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(135px, 1fr)); gap: 12px; }

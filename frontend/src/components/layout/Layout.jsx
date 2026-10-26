@@ -13,7 +13,7 @@ export default function Layout({ user, onLogout }) {
       <Sidebar open={menuOpen} onNavigate={closeMenu} onClose={closeMenu} />
       <div className="app-main">
         <Topbar pathname={pathname} onMenuClick={() => setMenuOpen((open) => !open)} user={user} onLogout={onLogout} />
-        <div className="app-content"><Outlet /></div>
+        <div className="app-content"><Outlet context={{ user, onLogout }} /></div>
       </div>
     </div>
   )
