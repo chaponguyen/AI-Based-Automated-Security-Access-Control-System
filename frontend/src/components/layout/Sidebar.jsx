@@ -10,7 +10,7 @@ const navigation = [
   { to: '/audit', label: 'Nhật ký thao tác', Icon: AuditIcon, managerOnly: true },
 ]
 
-export default function Sidebar({ open = false, onNavigate, onClose }) {
+export default function Sidebar({ open = false, onNavigate, onClose, userRole }) {
   return (
     <>
       {open && <button className="app-sidebar-backdrop" type="button" onClick={onClose} aria-label="Đóng menu điều hướng" />}
@@ -21,7 +21,7 @@ export default function Sidebar({ open = false, onNavigate, onClose }) {
         </div>
         <p className="app-sidebar__section">KHÔNG GIAN LÀM VIỆC</p>
         <nav className="app-sidebar__nav" aria-label="Điều hướng chính">
-          {navigation.filter((item) => !item.managerOnly).map(({ to, label, Icon, end }) => (
+          {navigation.filter((item) => !item.managerOnly || userRole === 'manager').map(({ to, label, Icon, end }) => (
             <NavLink key={to} to={to} end={end} onClick={onNavigate} className={({ isActive }) => `app-sidebar__link${isActive ? ' app-sidebar__link--active' : ''}`}>
               <Icon /><span>{label}</span>
             </NavLink>

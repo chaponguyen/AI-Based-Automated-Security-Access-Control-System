@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import Residents from './pages/Residents.jsx'
 import Verify from './pages/Verify.jsx'
 import AccessLogs from './pages/AccessLogs.jsx'
+import AuditLogs from './pages/AuditLogs.jsx'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/residents" element={<Residents />} />
           <Route path="/verify" element={<Verify />} />
           <Route path="/logs" element={<AccessLogs />} />
+          <Route path="/audit" element={<AuditLogs />} />
         </Route>
       </Routes>
     </BrowserRouter>

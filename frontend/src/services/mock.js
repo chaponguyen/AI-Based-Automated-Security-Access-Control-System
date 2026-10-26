@@ -10,6 +10,8 @@ export const PREPARE_SECONDS = Number.isFinite(configuredPrepareSeconds) && conf
 
 let mockResidentId = 900000
 const mockDeletedResidentIds = new Set()
+const mockDeletedLogIds = new Set()
+const mockDeletedLogRanges = []
 let mockDoorUntil = 0
 let mockDoorTimer = null
 
@@ -67,6 +69,38 @@ export async function mockDeleteResident(id, resident = {}) {
 
 export function mockIsResidentDeleted(id) {
   return mockDeletedResidentIds.has(Number(id))
+}
+
+// TODO(B17): thay bằng POST /api/logs/delete khi backend quản trị sẵn sàng.
+export async function mockDeleteLogs(payload = {}, expectedCount = 0) {
+  if (Array.isArray(payload.ids)) {
+    payload.ids.forEach((id) => mockDeletedLogIds.add(String(id)))
+  } else if (payload.from && payload.to) {
+    mockDeletedLogRanges.push({ from: new Date(payload.from).getTime(), to: new Date(payload.to).getTime() })
+  }
+  return { deleted: expectedCount }
+}
+
+export function mockFilterDeletedLogs(rows = []) {
+  return rows.filter((row) => {
+    if (mockDeletedLogIds.has(String(row.id))) return false
+    const timestamp = new Date(row.timestamp).getTime()
+    return !mockDeletedLogRanges.some((range) => timestamp >= range.from && timestamp <= range.to)
+  })
+}
+
+const mockAuditEntries = [
+  { id: 'audit-1', timestamp: '2026-10-26T08:45:00Z', staff_username: 'manager-demo', action: 'door.open', target_type: 'door', target_id: null, detail: 'Mở cửa 10 giây (mô phỏng)' },
+  { id: 'audit-2', timestamp: '2026-10-26T08:30:00Z', staff_username: 'manager-demo', action: 'resident.status', target_type: 'resident', target_id: 8, detail: 'Đổi quyền cư dân (mô phỏng)' },
+  { id: 'audit-3', timestamp: '2026-10-26T08:10:00Z', staff_username: 'manager-demo', action: 'staff.create', target_type: 'staff', target_id: 3, detail: 'Tạo tài khoản nhân viên (mô phỏng)' },
+]
+
+// TODO(B17): bỏ dữ liệu audit giả sau khi backend B16 sẵn sàng.
+export async function mockGetAudit({ limit = 200, action = '', q = '' } = {}) {
+  const query = String(q).trim().toLocaleLowerCase('vi')
+  return mockAuditEntries
+    .filter((entry) => (!action || entry.action === action) && (!query || `${entry.staff_username} ${entry.action} ${entry.target_type} ${entry.detail}`.toLocaleLowerCase('vi').includes(query)))
+    .slice(0, Number(limit) || 200)
 }
 
 export async function mockRegistrationPrecheck(fullName) {
