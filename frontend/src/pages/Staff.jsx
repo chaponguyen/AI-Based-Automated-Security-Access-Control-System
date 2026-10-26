@@ -96,10 +96,10 @@ export default function Staff() {
     setModalOpen(true)
   }
 
-  const closeForm = () => {
+  const closeForm = useCallback(() => {
     if (submitting) return
     setModalOpen(false)
-  }
+  }, [submitting])
 
   const updateField = (event) => {
     const { name, value } = event.target
