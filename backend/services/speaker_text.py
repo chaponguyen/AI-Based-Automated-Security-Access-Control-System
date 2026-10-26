@@ -189,7 +189,7 @@ def announcement(result: any, when=None) -> dict:
         Ví dụ: 'Nguyễn Văn An ở phòng A-1203 đã vào chung cư lúc 09:35.'
                'Nguyễn Văn An ở phòng a, mười hai không ba đã vào chung cư lúc chín giờ ba mươi lăm phút.'
     - Người lạ (not_matched | spoof_detected):
-        display & spoken: 'Có người lạ đang ở ngoài chung cư, bảo vệ cần ra gấp.'
+        display & spoken: 'Có người lạ đang ở ngoài chung cư, nhân viên an ninh cần ra gấp.'
         kind: 'stranger'
     - Inactive:
         display: 'Cư dân {tên} ở phòng {căn hộ} đang bị tạm khóa quyền ra vào, vui lòng liên hệ ban quản lý.'
@@ -228,7 +228,7 @@ def announcement(result: any, when=None) -> dict:
 
     # 1. Trường hợp Người lạ (stranger)
     if reason in ("not_matched", "spoof_detected") or user is None or decision == "denied" and reason != "inactive_user":
-        text = "Có người lạ đang ở ngoài chung cư, bảo vệ cần ra gấp."
+        text = "Có người lạ đang ở ngoài chung cư, nhân viên an ninh cần ra gấp."
         return {
             "display": text,
             "spoken": text,

@@ -262,7 +262,7 @@ Chạy nền khi backend chạy, **không cần mở web, không cần bật str
 #### CP-05 `announcement(result, when)`: dựng hai chuỗi
 - Làm: trả `{"display", "spoken", "kind"}`. `{tên}` = `full_name` (CSDL không có trường username riêng).
   - **Granted:** `display = "{tên} ở phòng {căn hộ} đã vào chung cư lúc {HH}:{MM}."` ; `spoken = "{tên} ở phòng {doc_can_ho} đã vào chung cư lúc {doc_gio}."` Ví dụ: "Nguyễn Văn An ở phòng a, mười hai không ba đã vào chung cư lúc chín giờ ba mươi lăm phút."
-  - **Người lạ** (`not_matched` hoặc `spoof_detected`): `"Có người lạ đang ở ngoài chung cư, bảo vệ cần ra gấp."` (cả `display` và `spoken`), `kind="stranger"`.
+  - **Người lạ** (`not_matched` hoặc `spoof_detected`): `"Có người lạ đang ở ngoài chung cư, nhân viên an ninh cần ra gấp."` (cả `display` và `spoken`), `kind="stranger"`.
   - **Inactive:** `"Cư dân {tên} ở phòng {căn hộ} đang bị tạm khóa quyền ra vào, vui lòng liên hệ ban quản lý."` (chủ dự án xác nhận nội dung câu).
 - Biên: thiếu `apartment_number` thì bỏ cụm "ở phòng …".
 - Kiểm tra: test so khớp chuỗi cho cả ba mẫu.

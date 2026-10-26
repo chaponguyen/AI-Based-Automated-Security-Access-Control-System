@@ -16,7 +16,7 @@
 6. Giai đoạn 2: mọi quyết định (granted và denied) đều gửi MQTT `{"decision": ...}` xuống STM32. Mất kết nối thì khóa giữ trạng thái đóng.
 7. Backend là chủ duy nhất của camera. Xác thực chạy nền tự động khi backend chạy, không cần mở web và không cần bật stream.
 8. Stream camera (MJPEG) là tùy chọn, chỉ mã hóa hình khi có người xem. Bật hoặc tắt stream không ảnh hưởng AI và loa.
-9. Loa: granted đọc "<tên> ở phòng <căn hộ> đã vào chung cư lúc <giờ> phút"; denied (người lạ hoặc giả mạo) đọc "Có người lạ đang ở ngoài chung cư, bảo vệ cần ra gấp". Loa đọc tiếng Việt mạch lạc bằng giọng tiếng Việt thật (không đánh vần); không có giọng tiếng Việt thì không đọc.
+9. Loa: granted đọc "<tên> ở phòng <căn hộ> đã vào chung cư lúc <giờ> phút"; denied (người lạ hoặc giả mạo) đọc "Có người lạ đang ở ngoài chung cư, nhân viên an ninh cần ra gấp". Loa đọc tiếng Việt mạch lạc bằng giọng tiếng Việt thật (không đánh vần); không có giọng tiếng Việt thì không đọc.
 
 ## Công nghệ
 React + Vite · FastAPI · PostgreSQL + SQLAlchemy + Alembic · InsightFace `buffalo_sc` (SCRFD + nhận diện, ONNX Runtime) · MiniFASNetV2 · OpenCV · WebSocket · (GĐ2) MQTT, STM32F103C8T6 + FreeRTOS, relay, khóa 12V, reed switch · (GĐ3) ESP32-CAM.

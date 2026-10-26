@@ -32,8 +32,19 @@ os.makedirs(WEIGHTS_TTS_DIR, exist_ok=True)
 os.makedirs(OUT_TTS_DIR, exist_ok=True)
 
 # Câu cảnh báo người lạ cố định (tiền tổng hợp vào weights/tts/ để dùng ngay kể cả khi mất mạng)
-STRANGER_ALERT_TEXT = "Có người lạ đang ở ngoài chung cư, bảo vệ cần ra gấp."
-STRANGER_CACHE_FILE = os.path.join(WEIGHTS_TTS_DIR, "alert_stranger.mp3")
+STRANGER_ALERT_TEXT = "Có người lạ đang ở ngoài chung cư, nhân viên an ninh cần ra gấp."
+
+
+def get_alert_cache_path(text: Optional[str] = None, voice: Optional[str] = None, rate: Optional[int] = None) -> str:
+    """Tạo đường dẫn file đệm âm thanh cố định trong weights/tts/ dựa trên băm của (văn bản, giọng, tốc độ)."""
+    t = text if text is not None else STRANGER_ALERT_TEXT
+    v = voice or SPEAK_VOICE_ID or "vi-VN-NamMinhNeural"
+    r = rate if rate is not None else SPEAK_RATE
+    cache_key = hashlib.md5(f"{t}_{v}_{r}".encode("utf-8")).hexdigest()
+    return os.path.join(WEIGHTS_TTS_DIR, f"alert_{cache_key}.mp3")
+
+
+STRANGER_CACHE_FILE = get_alert_cache_path()
 
 _cached_vietnamese_voice: Optional[str] = None
 _voice_checked: bool = False
@@ -336,15 +347,16 @@ def synthesize_edge_tts(text: str, output_path: str, voice: Optional[str] = None
 def preload_alert_cache() -> bool:
     """Tiền tổng hợp câu cảnh báo người lạ cố định vào weights/tts/ để phát ngay cả khi mạng chập chờn."""
     try:
-        if os.path.exists(STRANGER_CACHE_FILE) and os.path.getsize(STRANGER_CACHE_FILE) > 1000:
-            logger.debug("Đã có cache câu cảnh báo người lạ tại %s", STRANGER_CACHE_FILE)
+        cache_file = get_alert_cache_path()
+        if os.path.exists(cache_file) and os.path.getsize(cache_file) > 1000:
+            logger.debug("Đã có cache câu cảnh báo người lạ tại %s", cache_file)
             return True
 
         logger.info("Tiền tổng hợp câu cảnh báo người lạ vào cache...")
         voice = SPEAK_VOICE_ID or "vi-VN-NamMinhNeural"
-        ok = synthesize_edge_tts(STRANGER_ALERT_TEXT, STRANGER_CACHE_FILE, voice=voice, timeout_sec=8.0)
+        ok = synthesize_edge_tts(STRANGER_ALERT_TEXT, cache_file, voice=voice, timeout_sec=8.0)
         if ok:
-            logger.info("Tiền tổng hợp câu cảnh báo người lạ thành công (%s bytes)", os.path.getsize(STRANGER_CACHE_FILE))
+            logger.info("Tiền tổng hợp câu cảnh báo người lạ thành công (%s bytes)", os.path.getsize(cache_file))
             return True
         logger.warning("Không thể tiền tổng hợp câu cảnh báo người lạ lúc khởi động (mạng chưa sẵn sàng).")
         return False
@@ -417,8 +429,9 @@ def speak(text: str, is_alert: bool = False, voice_override: Optional[str] = Non
             # 1. Trường hợp câu cảnh báo người lạ: ưu tiên file cache tiền tổng hợp
             audio_file = None
             if text_clean == STRANGER_ALERT_TEXT or is_alert:
-                if os.path.exists(STRANGER_CACHE_FILE) and os.path.getsize(STRANGER_CACHE_FILE) > 1000:
-                    audio_file = STRANGER_CACHE_FILE
+                alert_cache = get_alert_cache_path(text_clean, voice, SPEAK_RATE)
+                if os.path.exists(alert_cache) and os.path.getsize(alert_cache) > 1000:
+                    audio_file = alert_cache
 
             # 2. Nếu chưa có file cache, tạo file mp3 theo hash md5 nội dung
             if not audio_file:
