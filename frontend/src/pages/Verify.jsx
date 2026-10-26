@@ -4,6 +4,8 @@ import LiveStream from '../components/LiveStream.jsx'
 import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
 import FaceBox from '../components/FaceBox.jsx'
 import DoorStatus from '../components/DoorStatus.jsx'
+import Badge from '../components/ui/Badge.jsx'
+import Card from '../components/ui/Card.jsx'
 import { getReasonLabel } from '../services/reasons.js'
 
 function getResidentName(result) {
@@ -30,7 +32,7 @@ export default function Verify() {
       </header>
 
       <div className="verify-grid">
-        <section className="panel verify-camera-panel">
+        <Card as="section" className="verify-camera-panel">
           <div className="section-heading"><div><p className="eyebrow">CAMERA CỬA CHÍNH</p><h2>Luồng hình ảnh</h2></div></div>
           <LiveStream
             cameraStatus={cameraStatus}
@@ -48,14 +50,14 @@ export default function Verify() {
             )}
             <p>vùng đưa vào nhận diện (chỉ mặt)</p>
           </div>
-        </section>
+        </Card>
 
-        <section className="panel verify-result-panel" aria-live="polite">
+        <Card as="section" className="verify-result-panel" aria-live="polite">
           <div className="section-heading"><div><p className="eyebrow">KẾT QUẢ MỚI NHẤT</p><h2>Quyết định ra vào</h2></div></div>
           {lastResult ? (
             <>
               <div className={`verification-result ${granted ? 'verification-result--granted' : 'verification-result--denied'}`}>
-                <span className={`result-chip ${granted ? 'result-chip--good' : 'result-chip--bad'}`}>{granted ? 'Cho phép' : 'Từ chối'}</span>
+                <Badge tone={granted ? 'success' : 'danger'}>{granted ? 'Cho phép' : 'Từ chối'}</Badge>
                 <dl className="verification-details">
                   <div><dt>Cư dân</dt><dd>{getResidentName(lastResult)}</dd></div>
                   <div><dt>Độ giống</dt><dd>{typeof lastResult.similarity === 'number' ? lastResult.similarity.toFixed(2) : '—'}</dd></div>
@@ -73,11 +75,11 @@ export default function Verify() {
             </>
           ) : (
             <div className="verify-waiting" role="status">
-              <span className={`status-chip ${connected ? 'status-chip--good' : 'status-chip--warning'}`}>{connected ? 'Đã kết nối' : 'Đang kết nối lại'}</span>
+              <Badge tone={connected ? 'success' : 'warning'}>{connected ? 'Đã kết nối' : 'Đang kết nối lại'}</Badge>
               <p>{connected ? 'Đang chờ sự kiện xác thực từ camera…' : 'Đang kết nối hệ thống xác thực…'}</p>
             </div>
           )}
-        </section>
+        </Card>
       </div>
       <DoorStatus doorState={doorState} />
     </main>

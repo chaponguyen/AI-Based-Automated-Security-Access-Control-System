@@ -80,6 +80,7 @@ export default function AccessLogs() {
   }, [logs])
 
   const toggleSelected = (id) => {
+    if (!isManager) return
     setSelectedIds((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
@@ -89,18 +90,20 @@ export default function AccessLogs() {
   }
 
   const toggleAll = () => {
+    if (!isManager) return
     const ids = logs.map((row) => row.id).filter((id) => id !== undefined && id !== null)
     setSelectedIds((current) => ids.every((id) => current.has(id)) ? new Set() : new Set(ids))
   }
 
   const openSelectedDelete = () => {
-    if (!selectedIds.size) return
+    if (!isManager || !selectedIds.size) return
     setDeleteError('')
     setDeleteCount(selectedIds.size)
     setDeleteMode('selected')
   }
 
   const openRangeDelete = async () => {
+    if (!isManager) return
     if (!fromDate || !toDate) {
       setDeleteError('Chọn cả ngày bắt đầu và ngày kết thúc để xóa theo khoảng thời gian.')
       return
