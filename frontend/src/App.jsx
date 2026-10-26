@@ -8,6 +8,7 @@ import Residents from './pages/Residents.jsx'
 import Verify from './pages/Verify.jsx'
 import AccessLogs from './pages/AccessLogs.jsx'
 import AuditLogs from './pages/AuditLogs.jsx'
+import Staff from './pages/Staff.jsx'
 import Login from './pages/Login.jsx'
 import Forbidden from './pages/Forbidden.jsx'
 
@@ -28,6 +29,7 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute managerOnly />}>
             <Route element={<Layout />}>
+              <Route path="/staff" element={<Staff />} />
               <Route path="/audit" element={<AuditLogs />} />
             </Route>
           </Route>

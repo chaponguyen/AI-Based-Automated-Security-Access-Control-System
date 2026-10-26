@@ -16,6 +16,11 @@ const mockDeletedLogRanges = []
 let mockDoorUntil = 0
 let mockDoorTimer = null
 let mockSessionUser = null
+let mockStaffId = 3
+let mockStaff = [
+  { id: 1, username: 'manager', full_name: 'Quản lý demo', role: 'manager', is_active: true, password: 'manager123', last_login_at: null, created_at: '2026-10-26T08:00:00Z' },
+  { id: 2, username: 'security', full_name: 'Nhân viên an ninh demo', role: 'security', is_active: true, password: 'security123', last_login_at: null, created_at: '2026-10-26T08:05:00Z' },
+]
 
 // TODO(B17): bỏ phiên giả sau khi API đăng nhập B15 sẵn sàng.
 export async function mockLogin(username, password) {
@@ -25,17 +30,14 @@ export async function mockLogin(username, password) {
     error.response = { status: 423, data: { reason: 'locked', retry_after_s: 30 } }
     throw error
   }
-  const accounts = {
-    manager: { password: 'manager123', user: { id: 1, username: 'manager', full_name: 'Quản lý demo', role: 'manager' } },
-    security: { password: 'security123', user: { id: 2, username: 'security', full_name: 'Nhân viên an ninh demo', role: 'security' } },
-  }
-  const account = accounts[String(username || '').trim()]
-  if (!account || account.password !== password) {
+  const account = mockStaff.find((item) => item.username === String(username || '').trim())
+  if (!account || !account.is_active || account.password !== password) {
     const error = new Error('Sai tên đăng nhập hoặc mật khẩu')
     error.response = { status: 401, data: { reason: 'invalid_credentials' } }
     throw error
   }
-  mockSessionUser = account.user
+  account.last_login_at = new Date().toISOString()
+  mockSessionUser = { id: account.id, username: account.username, full_name: account.full_name, role: account.role }
   return { ...mockSessionUser }
 }
 
@@ -45,6 +47,63 @@ export async function mockGetAuthMe() {
 
 export async function mockLogout() {
   mockSessionUser = null
+  return { ok: true }
+}
+
+function staffPublicFields(staff) {
+  const { password, ...publicFields } = staff
+  return { ...publicFields }
+}
+
+function mockStaffError(status, reason) {
+  const error = new Error(reason)
+  error.response = { status, data: { reason } }
+  return error
+}
+
+// TODO(B17): thay mock nhân viên bằng GET/POST/PATCH/DELETE /api/staff khi backend B15 sẵn sàng.
+export async function mockGetStaff() {
+  return mockStaff.map(staffPublicFields)
+}
+
+export async function mockCreateStaff(payload) {
+  if (mockStaff.some((staff) => staff.username.toLocaleLowerCase('vi') === String(payload.username).trim().toLocaleLowerCase('vi'))) {
+    throw mockStaffError(409, 'username_taken')
+  }
+  const created = {
+    id: mockStaffId++,
+    username: String(payload.username).trim(),
+    full_name: String(payload.full_name).trim(),
+    password: payload.password,
+    role: payload.role,
+    is_active: true,
+    last_login_at: null,
+    created_at: new Date().toISOString(),
+  }
+  mockStaff.push(created)
+  return staffPublicFields(created)
+}
+
+export async function mockUpdateStaff(id, payload = {}, currentUserId) {
+  const staff = mockStaff.find((item) => item.id === Number(id))
+  if (!staff) throw mockStaffError(404, 'not_found')
+  const demotes = payload.role && payload.role !== 'manager' && staff.role === 'manager'
+  const disables = payload.is_active === false && staff.is_active
+  if (Number(currentUserId) === staff.id && (demotes || disables)) throw mockStaffError(409, 'self_protected')
+  const managerCount = mockStaff.filter((item) => item.role === 'manager' && item.is_active).length
+  if (managerCount <= 1 && staff.role === 'manager' && (demotes || disables)) throw mockStaffError(409, 'last_manager')
+  Object.assign(staff, payload)
+  return staffPublicFields(staff)
+}
+
+export async function mockDeleteStaff(id, currentUserId) {
+  const staff = mockStaff.find((item) => item.id === Number(id))
+  if (!staff) throw mockStaffError(404, 'not_found')
+  if (Number(currentUserId) === staff.id) throw mockStaffError(409, 'self_protected')
+  if (staff.role === 'manager' && staff.is_active && mockStaff.filter((item) => item.role === 'manager' && item.is_active).length <= 1) {
+    throw mockStaffError(409, 'last_manager')
+  }
+  mockStaff = mockStaff.filter((item) => item.id !== staff.id)
   return { ok: true }
 }
 

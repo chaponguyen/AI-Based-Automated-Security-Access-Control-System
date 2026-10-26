@@ -365,6 +365,11 @@ tbody tr:last-child td { border-bottom: 0; }
 .auth-loading { display: grid; min-height: 100vh; place-items: center; color: var(--muted); }
 .auth-forbidden { justify-items: start; }
 .auth-forbidden a { color: var(--accent); font-weight: 700; }
+.staff-panel { min-width: 0; }
+.staff-table-container .ui-table { min-width: 980px; }
+.staff-action-group { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.staff-form { display: grid; gap: var(--space-4); }
+.staff-delete-warning { margin: 0; color: var(--bad); font-size: var(--text-sm); line-height: 1.5; }
 
 @media (max-width: 900px) {
   .app-shell { display: block; }
