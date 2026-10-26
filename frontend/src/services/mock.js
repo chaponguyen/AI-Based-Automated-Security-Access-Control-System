@@ -1,6 +1,5 @@
 // Các cờ mock chỉ bật khi Vite nhận giá trị "1" trong file môi trường.
 export const mockRegisterEnabled = import.meta.env.VITE_MOCK_REGISTER === '1'
-export const mockEventsEnabled = import.meta.env.VITE_MOCK_EVENTS === '1'
 // Chỉ bật tài khoản giả trong môi trường demo; không dùng các thông tin này khi gọi backend thật.
 export const mockAuthEnabled = import.meta.env.VITE_MOCK_AUTH === '1'
 // TODO(B17): bỏ mock quản trị sau khi backend B15/B16 sẵn sàng.
