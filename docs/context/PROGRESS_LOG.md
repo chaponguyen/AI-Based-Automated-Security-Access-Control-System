@@ -91,3 +91,4 @@
 - 2026-10-26 15:51 [B15] CP-06 (docs/reports/B15.md): Kiem thu tich hop 3 trang thai x cac route (chua dang nhap, security, manager), co che khoa, timing attack, thu hoi phien va tong ket B15
 - 2026-10-26 19:30 [B16] CP-01 (backend/api/staff.py; backend/main.py; backend/services/auth_service.py): Triển khai backend/api/staff.py quản lý nhân viên, kiểm tra định dạng, luật self_protected và last_manager, thu hồi phiên khi đổi mật khẩu/vai trò/tắt tài khoản
 - 2026-10-26 19:44 [B16] CP-02 (backend/api/residents.py): Triển khai route DELETE /api/residents/{id}: xóa user (cascade embeddings, set null access_logs) và nạp lại GalleryCache ngay lập tức
+- 2026-10-26 20:52 [B16] CP-03 (backend/api/logs.py): Thêm id vào GET /api/logs và triển khai route POST /api/logs/delete theo ids hoặc khoảng thời gian from/to
