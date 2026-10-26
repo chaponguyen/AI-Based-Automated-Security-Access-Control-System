@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
 import LiveStream from '../components/LiveStream.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
@@ -36,8 +35,6 @@ function SystemStatus({ label, value, tone }) {
 }
 
 export default function Dashboard() {
-  const { user } = useOutletContext() || {}
-  const isManager = user?.role === 'manager'
   const { connected, lastResult, cameraStatus, aiStatus, recording, doorState } = useDashboardSocket()
   const [logs, setLogs] = useState([])
   const [logsLoading, setLogsLoading] = useState(true)
@@ -74,8 +71,8 @@ export default function Dashboard() {
     setDoorLoading(true)
     setDoorError('')
     try {
-      // Security chạy demo frontend-only; manager dùng API thật trừ khi bật mock quản trị.
-      const data = !isManager || mockAdminEnabled
+      // TODO(B17): mockGetDoorStatus mô phỏng door_service chỉ khi VITE_MOCK_ADMIN=1.
+      const data = mockAdminEnabled
         ? await mockGetDoorStatus()
         : (await api.get('/door/status')).data
       if (!socketDoorRef.current) setDoorStatus(data)
@@ -84,7 +81,7 @@ export default function Dashboard() {
     } finally {
       setDoorLoading(false)
     }
-  }, [isManager])
+  }, [])
 
   useEffect(() => { void loadDoorStatus() }, [loadDoorStatus])
 
@@ -118,8 +115,8 @@ export default function Dashboard() {
     setDoorSubmitting(true)
     setDoorActionError('')
     try {
-      // Security chạy demo frontend-only; manager dùng API thật trừ khi bật mock quản trị.
-      const data = !isManager || mockAdminEnabled
+      // TODO(B17): mockOpenDoor mô phỏng door_service chỉ khi VITE_MOCK_ADMIN=1.
+      const data = mockAdminEnabled
         ? await mockOpenDoor(doorReason.trim())
         : (await api.post('/door/open', doorReason.trim() ? { reason: doorReason.trim() } : {})).data
       setDoorStatus(data)
@@ -183,7 +180,7 @@ export default function Dashboard() {
               <Button className="dashboard-door-button" onClick={() => { setDoorActionError(''); setDoorDialogOpen(true) }} disabled={doorLoading || doorOpen}>
                 {doorOpen ? `Đang mở · ${remainingSeconds} giây` : 'Mở cửa 10 giây'}
               </Button>
-              {(!isManager || mockAdminEnabled) && <small className="dashboard-demo-note">Chế độ mô phỏng, chưa kết nối khóa thật.</small>}
+              {mockAdminEnabled && <small className="dashboard-demo-note">Chế độ mô phỏng, chưa kết nối khóa thật.</small>}
             </>
           )}
         </Card>
