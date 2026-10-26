@@ -93,3 +93,4 @@
 - 2026-10-26 19:44 [B16] CP-02 (backend/api/residents.py): Triển khai route DELETE /api/residents/{id}: xóa user (cascade embeddings, set null access_logs) và nạp lại GalleryCache ngay lập tức
 - 2026-10-26 20:52 [B16] CP-03 (backend/api/logs.py): Thêm id vào GET /api/logs và triển khai route POST /api/logs/delete theo ids hoặc khoảng thời gian from/to
 - 2026-10-26 21:21 [B16] CP-04 (backend/services/audit_service.py; backend/api/audit.py; backend/api/logs.py; backend/api/residents.py; backend/api/staff.py; backend/api/auth.py): Trien khai audit_service.py va route GET /api/audit, ghi audit nguyen tu cung transaction cho cac thao tac xoa
+- 2026-10-26 21:28 [B16] CP-05 (backend/services/door_service.py; backend/api/door.py; backend/api/ws.py; backend/main.py; backend/.env.example): Trien khai door_service.py mo phong trang thai cua trong bo nho an toan luong, api door.py va phat door_state qua WebSocket (chua noi khoa that)

@@ -67,6 +67,18 @@ class ConnectionManager:
         except Exception as e:
             logger.debug("Không thể gửi ai_status khởi tạo: %s", e)
 
+        # Gửi ngay door_state hiện tại cho client mới kết nối (B16 CP-05)
+        try:
+            from services.door_service import get_door_service
+            door_svc = get_door_service()
+            door_data = door_svc.get_door_state_event_payload()
+            await websocket.send_json({
+                "event": "door_state",
+                "data": door_data,
+            })
+        except Exception as e:
+            logger.debug("Không thể gửi door_state khởi tạo: %s", e)
+
     def disconnect(self, websocket: WebSocket) -> None:
         """Gỡ bỏ kết nối khi client ngắt kết nối."""
         with self._lock:

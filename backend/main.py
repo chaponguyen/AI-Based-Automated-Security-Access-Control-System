@@ -74,10 +74,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Không thể kết nối callback loa: %s", e)
 
+    # (6) Khởi tạo dịch vụ cửa mô phỏng B16 CP-05
+    try:
+        from services.door_service import get_door_service
+        door_svc = get_door_service()
+        logger.info("DoorService đã khởi tạo (state=%s, open_seconds=%d).", door_svc.get_status().get("state"), door_svc.open_seconds)
+    except Exception as e:
+        logger.warning("Không thể khởi tạo DoorService: %s", e)
+
     yield
 
     # Dọn dẹp khi tắt hệ thống (shutdown)
     logger.info("Đang tắt hệ thống và giải phóng tài nguyên...")
+    try:
+        from services.door_service import get_door_service
+        door_svc = get_door_service()
+        door_svc.shutdown()
+        logger.info("DoorService đã hủy timer sạch sẽ khi shutdown.")
+    except Exception as e:
+        logger.warning("Lỗi khi shutdown DoorService: %s", e)
+
     try:
         from services import speaker_service
         speaker_service.stop_playback()
@@ -120,8 +136,8 @@ def http_exception_handler(request: Request, exc: HTTPException):
         return JSONResponse(status_code=exc.status_code, content=exc.detail)
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
-from api import auth, residents, verify, logs, ws, camera, stream, speaker, staff, audit
-for r in (auth.router, residents.router, residents.registration_router, verify.router, logs.router, ws.router, camera.router, stream.router, speaker.router, staff.router, audit.router):
+from api import auth, residents, verify, logs, ws, camera, stream, speaker, staff, audit, door
+for r in (auth.router, residents.router, residents.registration_router, verify.router, logs.router, ws.router, camera.router, stream.router, speaker.router, staff.router, audit.router, door.router):
     app.include_router(r)
 
 
