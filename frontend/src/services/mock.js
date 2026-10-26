@@ -1,12 +1,52 @@
 // Các cờ mock chỉ bật khi Vite nhận giá trị "1" trong file môi trường.
 export const mockRegisterEnabled = import.meta.env.VITE_MOCK_REGISTER === '1'
 export const mockEventsEnabled = import.meta.env.VITE_MOCK_EVENTS === '1'
+export const mockAdminEnabled = import.meta.env.VITE_MOCK_ADMIN === '1'
 const configuredPrepareSeconds = Number(import.meta.env.VITE_REGISTER_PREPARE_SECONDS)
 export const PREPARE_SECONDS = Number.isFinite(configuredPrepareSeconds) && configuredPrepareSeconds >= 1
   ? Math.floor(configuredPrepareSeconds)
   : 5
 
 let mockResidentId = 900000
+let mockDoorUntil = 0
+let mockDoorTimer = null
+
+function dispatchMockDoorState(data) {
+  window.dispatchEvent(new CustomEvent('dashboard:mock-event', { detail: { event: 'door_state', data } }))
+}
+
+export async function mockGetDoorStatus() {
+  const isOpen = mockDoorUntil > Date.now()
+  return {
+    state: isOpen ? 'open' : 'closed',
+    until: isOpen ? new Date(mockDoorUntil).toISOString() : null,
+    by: isOpen ? 'Nhân viên mô phỏng' : null,
+  }
+}
+
+export async function mockOpenDoor(reason = '') {
+  if (mockDoorUntil > Date.now()) {
+    return { ...(await mockGetDoorStatus()), open_seconds: Math.ceil((mockDoorUntil - Date.now()) / 1000), already_open: true }
+  }
+
+  if (mockDoorTimer !== null) window.clearTimeout(mockDoorTimer)
+  mockDoorUntil = Date.now() + 10000
+  const openState = {
+    state: 'open',
+    until: new Date(mockDoorUntil).toISOString(),
+    open_seconds: 10,
+    by: 'Nhân viên mô phỏng',
+    reason: reason || null,
+    already_open: false,
+  }
+  dispatchMockDoorState(openState)
+  mockDoorTimer = window.setTimeout(() => {
+    mockDoorUntil = 0
+    mockDoorTimer = null
+    dispatchMockDoorState({ state: 'closed', until: null, open_seconds: 0, by: null, reason: null })
+  }, 10000)
+  return openState
+}
 
 export async function mockRegistrationPrecheck(fullName) {
   await Promise.resolve()
