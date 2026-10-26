@@ -26,6 +26,7 @@
 | B14 loa tạm hoãn | Dừng B14 phần loa theo chỉ đạo của chủ dự án; giữ `backend/services/speaker_service.py` ngoài commit |
 | Khung hình nhiều mặt: xử lý độc lập từng mặt; có người lạ thì vẫn cảnh báo dù có cư dân đi cùng; cả hai sự kiện cùng lúc thì cảnh báo người lạ ưu tiên | Đảm bảo an ninh tối đa, ngăn chặn hành vi bám đuôi cư dân (tailgating) để đột nhập trái phép |
 | Chống đăng ký trùng khuôn mặt (precheck và post-check) | Chủ dự án duyệt (2026-10-25). Ngăn ngừa việc một người đăng ký nhiều lần; route GET /api/registration/precheck và kiểm tra 2 lớp trước/sau khi quay POST /api/residents; cảnh báo đỏ trên stream "ĐÃ TỒN TẠI" và trả 409 already_registered khi similarity >= DUPLICATE_SIM_THRESHOLD |
+| Tái khởi động B14: Chọn engine edge-tts với giọng nam vi-VN-NamMinhNeural, phát qua Windows MCI | Máy không có giọng SAPI5 tiếng Việt; edge-tts phát âm tự nhiên, mạch lạc, không đánh vần; phát mp3 qua Windows Multimedia API (MCI/winmm.dll) không thêm thư viện nặng; tiền tổng hợp lưu đệm câu cảnh báo người lạ trong backend/ai/weights/tts/ để cảnh báo tức thì kể cả khi mạng chập chờn; timeout cứng 8s |
 
 
 ## Đề xuất đổi contract

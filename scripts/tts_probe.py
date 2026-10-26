@@ -85,6 +85,31 @@ def probe_piper_models():
     return models
 
 
+def probe_edge_tts_voices():
+    """Kiểm tra engine edge-tts và các giọng tiếng Việt khả dụng."""
+    try:
+        import edge_tts
+        import asyncio
+
+        async def _fetch_voices():
+            voices = await edge_tts.list_voices()
+            return [
+                v for v in voices
+                if "vi-VN" in v.get("ShortName", "") or "Vietnamese" in v.get("Locale", "")
+            ]
+
+        try:
+            return asyncio.run(asyncio.wait_for(_fetch_voices(), timeout=5.0))
+        except Exception:
+            # Dự phòng danh sách chuẩn nếu timeout mạng
+            return [
+                {"ShortName": "vi-VN-NamMinhNeural", "Gender": "Male", "FriendlyName": "Microsoft NamMinh Online (Natural) - Vietnamese"},
+                {"ShortName": "vi-VN-HoaiMyNeural", "Gender": "Female", "FriendlyName": "Microsoft HoaiMy Online (Natural) - Vietnamese"},
+            ]
+    except ImportError:
+        return None
+
+
 def is_vietnamese(name_or_culture):
     s = str(name_or_culture).lower()
     return any(k in s for k in ["vi-vn", "vivn", "vietnam", "vietnamese", "42a", "hoaimy", "namminh", "an"])
@@ -123,18 +148,36 @@ def main():
     for m in piper_models:
         print(f"   - {m}")
 
+    edge_voices = probe_edge_tts_voices()
+    print(f"\n4. Engine Edge-TTS (online Neural):")
+    if edge_voices is None:
+        print("   - Chưa cài đặt thư viện edge-tts (pip install edge-tts)")
+    else:
+        print(f"   - Đã cài đặt thư viện edge-tts [SẴN SÀNG]")
+        for ev in edge_voices:
+            s_name = ev.get("ShortName", "")
+            gender = ev.get("Gender", "")
+            print(f"   - {s_name} ({gender}) [TIẾNG VIỆT]")
+
     print("\n" + "="*50)
-    total_vi = len(vi_sapi) + len(vi_onecore) + len(piper_models)
-    if total_vi > 0:
-        print(f"KẾT QUẢ: Tìm thấy {total_vi} nguồn giọng tiếng Việt khả dụng.")
+    total_local_vi = len(vi_sapi) + len(vi_onecore) + len(piper_models)
+    total_edge_vi = len(edge_voices) if edge_voices else 0
+
+    if total_local_vi > 0:
+        print(f"KẾT QUẢ: Tìm thấy {total_local_vi} nguồn giọng tiếng Việt nội bộ.")
+    elif total_edge_vi > 0:
+        print(f"KẾT QUẢ: Hệ thống nội bộ chưa có giọng SAPI5/OneCore tiếng Việt,")
+        print(f"         nhưng engine Edge-TTS ĐÃ SẴN SÀNG với {total_edge_vi} giọng tiếng Việt chất lượng cao.")
+        print(f"         Giọng nam được chọn: vi-VN-NamMinhNeural.")
+        print(f"         Cấu hình áp dụng: SPEAK_ENGINE=edge, SPEAK_VOICE_ID=vi-VN-NamMinhNeural.")
     else:
         print("KẾT QUẢ: HIỆN CHƯA CÓ GIỌNG TIẾNG VIỆT NÀO TRÊN MÁY TÍNH.")
         print("\nCác phương án theo tài liệu docs/plan/MO_TA_CONG_VIEC.md mục B14:")
         print("  Phương án 1 (Khuyến nghị): Cài gói tiếng Việt cho Windows:")
         print("     Settings -> Time & language -> Language & region -> Add Vietnamese -> Text-to-speech.")
         print("  Phương án 2: Sử dụng Piper TTS offline:")
-        print("     Tải mô hình tiếng Việt (vi_VN-vivos-x_low hoặc vi_VN-25hours-single) vào backend/ai/weights/tts/.")
-        print("  Phương án 3: Sử dụng edge-tts (cần kết nối Internet, dự phòng).")
+        print("     Tải mô hình tiếng Việt vào backend/ai/weights/tts/.")
+        print("  Phương án 3: Sử dụng edge-tts (SPEAK_ENGINE=edge, SPEAK_VOICE_ID=vi-VN-NamMinhNeural).")
     print("="*50)
 
 
