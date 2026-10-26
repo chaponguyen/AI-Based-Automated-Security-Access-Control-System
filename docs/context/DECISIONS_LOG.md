@@ -28,6 +28,7 @@
 | Chống đăng ký trùng khuôn mặt (precheck và post-check) | Chủ dự án duyệt (2026-10-25). Ngăn ngừa việc một người đăng ký nhiều lần; route GET /api/registration/precheck và kiểm tra 2 lớp trước/sau khi quay POST /api/residents; cảnh báo đỏ trên stream "ĐÃ TỒN TẠI" và trả 409 already_registered khi similarity >= DUPLICATE_SIM_THRESHOLD |
 | Tái khởi động B14: Chọn engine edge-tts với giọng nam vi-VN-NamMinhNeural, phát qua Windows MCI | Máy không có giọng SAPI5 tiếng Việt; edge-tts phát âm tự nhiên, mạch lạc, không đánh vần; phát mp3 qua Windows Multimedia API (MCI/winmm.dll) không thêm thư viện nặng; tiền tổng hợp lưu đệm câu cảnh báo người lạ trong backend/ai/weights/tts/ để cảnh báo tức thì kể cả khi mạng chập chờn; timeout cứng 8s |
 
+| Hạ `SIM_THRESHOLD` từ 0,50 xuống **0,40**; hằng chuyển vào `backend/ai/config.py`, `matcher.py` import lại (giữ tên `ai.matcher.SIM_THRESHOLD`) | Đo 231 cặp thật (10 selfie + 8 webcam của chủ dự án, 4 người lạ): `best_match` cùng người 0,5447–0,8444, người lạ −0,1154–0,1125. Ngưỡng 0,40 cách người lạ cao nhất 0,2875 và cách cùng người thấp nhất 0,1447; 0,50 chỉ còn 0,0447 dưới cùng người thấp nhất, trong khi A2 đo trực tiếp được 0,5552. Dữ liệu nhỏ nên ngưỡng là tạm thời; chống đăng ký trùng khuôn mặt khuyến nghị 0,60 (chưa làm backend) |
 
 ## Đề xuất đổi contract
 (Agent ghi đề xuất ở đây: ID việc, thay đổi muốn làm, lý do, Agent nào bị ảnh hưởng. Chủ dự án duyệt hoặc từ chối rồi ghi kết quả bên cạnh.)

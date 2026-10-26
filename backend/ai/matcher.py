@@ -1,7 +1,7 @@
 # Agent 1 (AI) — so khớp với kho embedding
 import numpy as np
 
-SIM_THRESHOLD = 0.50   # chỉnh bằng thực nghiệm (FAR/FRR), xem docs/context/DECISIONS_LOG.md
+from .config import SIM_THRESHOLD  # noqa: F401  (giữ tên ai.matcher.SIM_THRESHOLD cho A2)
 
 
 def _unit(vec):

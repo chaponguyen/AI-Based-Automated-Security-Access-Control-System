@@ -15,6 +15,13 @@ BRIGHT_RANGE = (50.0, 210.0)  # khoảng trung bình xám hợp lệ
 MAX_YAW_RATIO = 0.35        # lệch mũi so với trung điểm hai mắt, theo khoảng cách hai mắt
 MAX_ROLL_DEG = 20.0         # góc nghiêng đường nối hai mắt
 
+# So khớp khuôn mặt (B3): cosine trên embedding đã chuẩn hóa L2.
+# Hiệu chỉnh 2026-10-26 trên 10 selfie + 8 ảnh webcam của chủ dự án và 4 người lạ:
+# điểm best_match (top-3) cùng người 0,5447..0,8444; người lạ -0,1154..0,1125.
+# Chọn 0,40 giữa khoảng tách, lệch 0,1447 so với cùng người thấp nhất và 0,2875 so với
+# người lạ cao nhất (ưu tiên an ninh hơn tiện lợi). Dữ liệu nhỏ, xem docs/reports/B3.md.
+SIM_THRESHOLD = 0.40
+
 # Chống giả mạo (MiniFASNetV2, ONNX)
 ANTI_SPOOF_SCALE = 2.7      # hệ số mở rộng bbox quanh tâm, theo cấu hình gốc của model
 ANTI_SPOOF_SIZE = 80        # đầu vào model là 80x80
