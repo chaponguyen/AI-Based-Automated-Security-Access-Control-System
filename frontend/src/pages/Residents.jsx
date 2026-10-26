@@ -285,6 +285,7 @@ export default function Residents() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (!isManager) return
     if (registrationPhaseRef.current !== 'idle' || precheckResult?.state === 'exists') return
     setSubmitted(true)
     const nextErrors = validateResidentForm(form)
@@ -418,6 +419,7 @@ export default function Residents() {
   })
 
   const toggleResidentStatus = async (resident) => {
+    if (!isManager) return
     if (pendingIds.has(resident.id)) return
     const previousStatus = resident.status
     const nextStatus = previousStatus === 'active' ? 'inactive' : 'active'
@@ -613,7 +615,7 @@ export default function Residents() {
           <div className="error-state" role="alert"><p>{residentsError}</p><button type="button" onClick={() => void refreshResidents()}>Thử lại</button></div>
         )}
         {!residentsLoading && !residentsError && filteredResidents.length === 0 && (
-          <p className="empty-state">{search ? 'Không tìm thấy cư dân phù hợp.' : 'Chưa có cư dân nào. Hãy đăng ký cư dân đầu tiên ở biểu mẫu phía trên.'}</p>
+          <p className="empty-state">{search ? 'Không tìm thấy cư dân phù hợp.' : isManager ? 'Chưa có cư dân nào. Hãy đăng ký cư dân đầu tiên ở biểu mẫu phía trên.' : 'Chưa có cư dân nào trong danh sách.'}</p>
         )}
         {filteredResidents.length > 0 && (
           <div className="table-wrap">
