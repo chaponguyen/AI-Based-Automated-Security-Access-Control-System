@@ -88,3 +88,4 @@
 - 2026-10-26 15:39 [B15] CP-03 (backend/api/auth.py; backend/main.py): Trien khai route auth.py (login, logout, me), co che khoa tai khoan 5 phut khi sai 5 lan, ket noi main.py voi CORS allow_credentials
 - 2026-10-26 15:46 [B15] CP-04 (backend/api/deps.py; backend/api/camera.py; backend/api/stream.py; backend/api/residents.py; backend/api/logs.py; backend/api/verify.py; backend/api/speaker.py; backend/api/ws.py; backend/main.py): Chan moi route bang require_staff va require_manager, kiem tra cookie WebSocket dashboard truoc khi accept va ping dinh ky
 - 2026-10-26 15:49 [B15] CP-05 (scripts/create_manager.py): Trien khai script tao tai khoan manager dau tien scripts/create_manager.py an toan qua getpass khong in mat khau
+- 2026-10-26 15:51 [B15] CP-06 (docs/reports/B15.md): Kiem thu tich hop 3 trang thai x cac route (chua dang nhap, security, manager), co che khoa, timing attack, thu hoi phien va tong ket B15
