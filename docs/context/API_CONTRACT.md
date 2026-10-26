@@ -10,7 +10,16 @@
 | GET | `/api/residents` | — | `[{id, user_code, full_name, age, apartment_number, status, frames}]` |
 | PATCH | `/api/residents/{id}/status` | `{status: "active"|"inactive"}` (yêu cầu role `manager`) | cư dân đã cập nhật; 403 `{"reason": "forbidden"}` nếu role `security` |
 | POST | `/api/verify` | multipart: `image` | `{user, similarity, liveness, decision, reason, box, crop_b64}` |
-| GET | `/api/logs` | `?decision=&q=&from=&to=` | `[{timestamp, name, similarity, liveness, decision, reason}]` |
+| GET | `/api/logs` | `?decision=&q=&from=&to=` | `[{id, timestamp, name, similarity, liveness, decision, reason}]` (mỗi dòng có thêm trường `id`) |
+| POST | `/api/logs/delete` | `{ids?: [số], from?: ISO, to?: ISO}` (yêu cầu role `manager`) | 200 `{"deleted": n}`; 422 nếu thiếu cả hai |
+| GET | `/api/staff` | — (yêu cầu role `manager`) | `[{id, username, full_name, role, is_active, last_login_at, created_at}]` |
+| POST | `/api/staff` | `{username, full_name, password, role}` (yêu cầu role `manager`) | 201 `{id, username, full_name, role, is_active, last_login_at, created_at}`; 409 `{"reason": "username_taken"}`; 422 |
+| PATCH | `/api/staff/{id}` | `{full_name?, role?, is_active?, password?}` (yêu cầu role `manager`) | 200 bản ghi mới; 409 `{"reason": "last_manager"\|"self_protected"}`; 404 |
+| DELETE | `/api/staff/{id}` | — (yêu cầu role `manager`) | 200 `{"ok": true}`; 409 `{"reason": "last_manager"\|"self_protected"}`; 404 |
+| DELETE | `/api/residents/{id}` | — (yêu cầu role `manager`) | 200 `{"ok": true, "deleted": {id, user_code, full_name}}`; 404 |
+| GET | `/api/audit` | `?limit=&action=&q=` (yêu cầu role `manager`) | `[{id, timestamp, staff_username, action, target_type, target_id, detail}]` (mới nhất trước, limit mặc định 200, tối đa 1000) |
+| POST | `/api/door/open` | `{reason?: string}` (mọi staff) | 200 `{"state": "open", "open_seconds": 10, "until": ISO, "already_open": bool}` |
+| GET | `/api/door/status` | — (mọi staff) | `{"state": "closed"\|"open", "until": ISO\|null, "by": str\|null}` |
 | GET | `/api/health` | — (công khai) | `{status: "ok"}` |
 | GET | `/api/camera/status` | — | `{running, fps, width, height, viewers}` |
 | GET | `/api/stream` | — | MJPEG `multipart/x-mixed-replace; boundary=frame` (chỉ mã hóa khi có người xem) |
@@ -23,14 +32,15 @@
 `reason` dùng mã cố định: `ok`, `not_matched`, `spoof_detected`, `inactive_user`, `no_face`, `multiple_faces`, `low_quality`.
 
 `access_result.data` = `{user, decision, reason, similarity, box, timestamp, announcement: {display, spoken, kind}}` (`kind`: `granted` | `stranger` | `inactive`).
+`door_state.data` = `{"state": "open"|"closed", "until": ISO|null, "open_seconds": int, "by": str|null, "reason": str|null}` (gửi trạng thái hiện tại ngay khi WS kết nối).
 `record_progress.data` = `{t_ms, got, kept}`. `ai_status.data` = `{running, fps, tracking, last_event_at}`.
 
-## Bảo mật và Phân quyền (B15)
+## Bảo mật và Phân quyền (B15 - B16)
 - **Công khai:** chỉ `POST /api/auth/login` và `GET /api/health`.
-- **Yêu cầu đăng nhập (`require_staff`):** Mọi route còn lại (kể cả stream MJPEG, camera status, speaker, logs, verify) và WebSocket dashboard. Thiếu hoặc phiên hết hạn trả 401 `{"reason": "not_authenticated"}`.
+- **Yêu cầu đăng nhập (`require_staff`):** Mọi route còn lại (kể cả stream MJPEG, camera status, speaker, logs, verify, door) và WebSocket dashboard. Thiếu hoặc phiên hết hạn trả 401 `{"reason": "not_authenticated"}`.
 - **Phân quyền vai trò:**
-  - `manager`: Đầy đủ quyền, bao gồm thêm cư dân (`POST /api/residents`) và đổi trạng thái (`PATCH /api/residents/{id}/status`).
-  - `security`: Xem camera stream, xem danh sách cư dân, xem nhật ký, thao tác loa. Khi gọi POST residents hoặc PATCH status trả 403 `{"reason": "forbidden"}`.
+  - `manager`: Đầy đủ quyền quản trị: thêm/xóa cư dân (`POST /api/residents`, `DELETE /api/residents/{id}`), đổi trạng thái cư dân (`PATCH /api/residents/{id}/status`), quản lý nhân viên (`/api/staff`), xóa nhật ký (`POST /api/logs/delete`), xem nhật ký kiểm toán (`GET /api/audit`), điều khiển cửa.
+  - `security`: Xem camera stream, xem danh sách cư dân, xem nhật ký ra vào, thao tác loa, điều khiển mở cửa (`POST /api/door/open`, `GET /api/door/status`). Khi gọi các route chỉ dành cho manager bị chặn với 403 `{"reason": "forbidden"}`.
 
 ## MQTT (giai đoạn 2)
 | Topic | Bên gửi | Payload |

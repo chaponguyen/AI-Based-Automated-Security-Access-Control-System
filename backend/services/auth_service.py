@@ -207,3 +207,24 @@ def revoke_session(db: Session, raw_token: Optional[str]) -> bool:
         db.rollback()
         logger.warning("Lỗi thu hồi phiên: %s", e)
         return False
+
+
+def revoke_all_staff_sessions(db: Session, staff_id: int) -> int:
+    """Thu hồi toàn bộ phiên làm việc của một tài khoản nhân viên (B16 CP-01).
+
+    Được gọi khi đổi mật khẩu, đổi vai trò hoặc vô hiệu hóa tài khoản (is_active=False).
+    Trả về số lượng phiên đã thu hồi.
+    """
+    try:
+        deleted = (
+            db.query(StaffSession)
+            .filter(StaffSession.staff_id == staff_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return deleted
+    except Exception as e:
+        db.rollback()
+        logger.warning("Lỗi thu hồi toàn bộ phiên của staff_id=%s: %s", staff_id, e)
+        return 0
+
