@@ -22,6 +22,7 @@
 | Chạy song song bằng git worktree, mỗi Agent một nhánh; commit qua `scripts/agent_commit.py` | `git add -A` trong cùng một thư mục làm Agent này commit nhầm code dở của Agent kia |
 | Đổi contract (hàm, route, schema) phải được chủ dự án duyệt trước | Ba Agent song song dựa vào contract; một Agent tự đổi sẽ làm hai Agent kia hỏng |
 | B4 chưa đạt tiêu chí chống giả mạo: 8/8 ảnh chụp lại màn hình lọt ở mọi ngưỡng 0,40–0,80; giữ `LIVENESS_MIN=0,60` | MiniFASNetV2 bỏ sót replay phủ kín khung (mất viền màn hình trong vùng cắt 2,7). Chưa có ngưỡng nào tách được ảnh thật/giả trên bộ hiện tại; cần thêm liveness theo thời gian hoặc model khác rồi đo lại, không tăng ngưỡng >0,99 dựa trên 8 ảnh |
+| Hạ `SIM_THRESHOLD` từ 0,50 xuống **0,40**; hằng chuyển vào `backend/ai/config.py`, `matcher.py` import lại (giữ tên `ai.matcher.SIM_THRESHOLD`) | Đo 231 cặp thật (10 selfie + 8 webcam của chủ dự án, 4 người lạ): `best_match` cùng người 0,5447–0,8444, người lạ −0,1154–0,1125. Ngưỡng 0,40 cách người lạ cao nhất 0,2875 và cách cùng người thấp nhất 0,1447; 0,50 chỉ còn 0,0447 dưới cùng người thấp nhất, trong khi A2 đo trực tiếp được 0,5552. Dữ liệu nhỏ nên ngưỡng là tạm thời; chống đăng ký trùng khuôn mặt khuyến nghị 0,60 (chưa làm backend) |
 
 ## Đề xuất đổi contract
 (Agent ghi đề xuất ở đây: ID việc, thay đổi muốn làm, lý do, Agent nào bị ảnh hưởng. Chủ dự án duyệt hoặc từ chối rồi ghi kết quả bên cạnh.)
