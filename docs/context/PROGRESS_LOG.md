@@ -86,3 +86,4 @@
 - 2026-10-26 15:18 [B15] CP-01 (backend/database/models.py; backend/migrations/versions/7e3d1a8c9012_b15_staff_accounts_sessions_audit_logs.py): Thiet ke va tao migration 3 bang staff_accounts, staff_sessions, audit_logs
 - 2026-10-26 15:23 [B15] CP-02 (backend/services/auth_service.py; backend/.env.example): Trien khai auth_service.py: bam scrypt, so khop hmac, quan ly phien sha256 va cau hinh moi truong
 - 2026-10-26 15:39 [B15] CP-03 (backend/api/auth.py; backend/main.py): Trien khai route auth.py (login, logout, me), co che khoa tai khoan 5 phut khi sai 5 lan, ket noi main.py voi CORS allow_credentials
+- 2026-10-26 15:46 [B15] CP-04 (backend/api/deps.py; backend/api/camera.py; backend/api/stream.py; backend/api/residents.py; backend/api/logs.py; backend/api/verify.py; backend/api/speaker.py; backend/api/ws.py; backend/main.py): Chan moi route bang require_staff va require_manager, kiem tra cookie WebSocket dashboard truoc khi accept va ping dinh ky

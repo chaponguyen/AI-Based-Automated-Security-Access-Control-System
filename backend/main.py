@@ -110,6 +110,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi import Request, HTTPException
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(HTTPException)
+def http_exception_handler(request: Request, exc: HTTPException):
+    """Xử lý ngoại lệ HTTP: nếu detail là dict thì trả trực tiếp về client (B15 CP-04)."""
+    if isinstance(exc.detail, dict):
+        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
 from api import auth, residents, verify, logs, ws, camera, stream, speaker
 for r in (auth.router, residents.router, residents.registration_router, verify.router, logs.router, ws.router, camera.router, stream.router, speaker.router):
     app.include_router(r)

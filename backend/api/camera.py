@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from services.camera_service import get_camera
+from api.deps import require_staff
 
-router = APIRouter(prefix="/api/camera", tags=["camera"])
+router = APIRouter(prefix="/api/camera", tags=["camera"], dependencies=[Depends(require_staff)])
 
 
 class CameraStatusResponse(BaseModel):

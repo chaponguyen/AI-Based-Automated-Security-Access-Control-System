@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 from services.verification_service import verify_image, record_access
+from api.deps import require_staff
 
-router = APIRouter(prefix="/api/verify", tags=["verify"])
+router = APIRouter(prefix="/api/verify", tags=["verify"], dependencies=[Depends(require_staff)])
 
 
 @router.post("")

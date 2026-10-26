@@ -1,11 +1,12 @@
 """API endpoints cho video streaming và snapshot."""
 import cv2
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, Response
 from services.stream_service import generate_mjpeg_stream
 from services.camera_service import get_camera
+from api.deps import require_staff
 
-router = APIRouter(prefix="/api/stream", tags=["stream"])
+router = APIRouter(prefix="/api/stream", tags=["stream"], dependencies=[Depends(require_staff)])
 
 
 @router.get("")

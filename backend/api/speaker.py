@@ -1,11 +1,12 @@
 # Agent 2 — API điều khiển và kiểm tra loa thông báo (B14 CP-08)
 # docs/context/API_CONTRACT.md
 from typing import Dict, Any
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from services import speaker_service
+from api.deps import require_staff
 
-router = APIRouter(prefix="/api/speaker", tags=["speaker"])
+router = APIRouter(prefix="/api/speaker", tags=["speaker"], dependencies=[Depends(require_staff)])
 
 
 class SpeakerTestRequest(BaseModel):

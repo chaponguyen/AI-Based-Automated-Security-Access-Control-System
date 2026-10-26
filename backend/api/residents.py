@@ -17,8 +17,10 @@ from services.registration_service import (
     find_existing_resident,
 )
 
+from api.deps import require_staff, require_manager
+
 router = APIRouter(prefix="/api/residents", tags=["residents"])
-registration_router = APIRouter(prefix="/api/registration", tags=["registration"])
+registration_router = APIRouter(prefix="/api/registration", tags=["registration"], dependencies=[Depends(require_staff)])
 
 
 @registration_router.get("/precheck")
@@ -159,7 +161,7 @@ class StatusUpdatePayload(BaseModel):
     status: Literal["active", "inactive"]
 
 
-@router.get("", response_model=List[ResidentResponse])
+@router.get("", response_model=List[ResidentResponse], dependencies=[Depends(require_staff)])
 def get_residents(db: Session = Depends(get_db)):
     """Lấy danh sách cư dân kèm số lượng khung hình khuôn mặt (frames).
     
@@ -190,7 +192,7 @@ def get_residents(db: Session = Depends(get_db)):
     return residents_list
 
 
-@router.patch("/{id}/status", response_model=ResidentResponse)
+@router.patch("/{id}/status", response_model=ResidentResponse, dependencies=[Depends(require_manager)])
 def update_resident_status(
     id: int,
     payload: StatusUpdatePayload,
@@ -253,6 +255,7 @@ class ResidentCreateResponse(BaseModel):
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=ResidentCreateResponse,
+    dependencies=[Depends(require_manager)],
     responses={
         201: {"description": "Đăng ký cư dân thành công kèm khuôn mặt"},
         409: {

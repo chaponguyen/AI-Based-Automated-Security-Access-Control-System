@@ -8,8 +8,9 @@ from sqlalchemy import or_
 
 from database.database import get_db
 from database.models import AccessLog, User
+from api.deps import require_staff
 
-router = APIRouter(prefix="/api/logs", tags=["logs"])
+router = APIRouter(prefix="/api/logs", tags=["logs"], dependencies=[Depends(require_staff)])
 
 
 class LogResponse(BaseModel):

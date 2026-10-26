@@ -116,11 +116,35 @@ def broadcast(event: str, data: Dict[str, Any]) -> None:
         logger.debug("Không tìm thấy running event loop để broadcast WebSocket event: %s", event)
 
 
-async def _ping_heartbeat(websocket: WebSocket):
-    """Ping định kỳ mỗi 20 giây tới client để giữ kết nối."""
+async def _ping_heartbeat(websocket: WebSocket, raw_token: str):
+    """Ping định kỳ mỗi 20 giây và kiểm tra hiệu lực phiên (B15 CP-04).
+    
+    Nếu phiên bị thu hồi hoặc tài khoản bị tắt (is_active=False) thì đóng kết nối
+    với mã 1008 trong vòng ~20-30 giây.
+    """
+    from database.database import SessionLocal
+    from services import auth_service
+
     try:
         while True:
             await asyncio.sleep(20)
+            # Kiểm tra hiệu lực phiên trong CSDL
+            db = SessionLocal()
+            is_valid = False
+            try:
+                staff = auth_service.get_session_user(db, raw_token)
+                if staff and staff.is_active:
+                    is_valid = True
+            except Exception as e:
+                logger.debug("Lỗi kiểm tra phiên định kỳ trong WS ping: %s", e)
+            finally:
+                db.close()
+
+            if not is_valid:
+                logger.warning("Phiên WebSocket bị thu hồi hoặc tài khoản bị tắt, đóng kết nối với code 1008.")
+                await websocket.close(code=1008, reason="session_revoked")
+                break
+
             await websocket.send_json({"event": "ping", "data": {}})
     except asyncio.CancelledError:
         pass
@@ -132,12 +156,37 @@ async def _ping_heartbeat(websocket: WebSocket):
 async def websocket_dashboard(websocket: WebSocket):
     """WebSocket endpoint cho Dashboard.
     
-    - Gửi ngay camera_status khi kết nối.
-    - Ping định kỳ mỗi 20 giây.
-    - Nhận các sự kiện thời gian thực (access_result, door_state, camera_status, ai_status, record_progress).
+    Bảo mật B15 CP-04:
+    - Kiểm tra cookie 'session' TRƯỚC khi accept.
+    - Thiếu cookie hoặc phiên không hợp lệ: đóng ngay với mã 1008 (không gửi dữ liệu).
+    - Kiểm tra định kỳ mỗi 20 giây qua heartbeat: nếu phiên bị thu hồi hoặc tài khoản bị tắt thì đóng kết nối với mã 1008.
     """
+    raw_token = websocket.cookies.get("session")
+    if not raw_token:
+        logger.warning("WebSocket bị từ chối: thiếu cookie session, đóng với code 1008.")
+        await websocket.close(code=1008, reason="not_authenticated")
+        return
+
+    from database.database import SessionLocal
+    from services import auth_service
+
+    db = SessionLocal()
+    staff = None
+    try:
+        staff = auth_service.get_session_user(db, raw_token)
+    except Exception as e:
+        logger.warning("Lỗi kiểm tra phiên khi kết nối WS: %s", e)
+    finally:
+        db.close()
+
+    if not staff or not staff.is_active:
+        logger.warning("WebSocket bị từ chối: phiên không hợp lệ hoặc tài khoản bị vô hiệu hóa, đóng với code 1008.")
+        await websocket.close(code=1008, reason="not_authenticated")
+        return
+
+    # Chỉ accept và bắt đầu gửi dữ liệu sau khi xác thực hợp lệ
     await manager.connect(websocket)
-    ping_task = asyncio.create_task(_ping_heartbeat(websocket))
+    ping_task = asyncio.create_task(_ping_heartbeat(websocket, raw_token))
     try:
         while True:
             # Lắng nghe tin nhắn từ client
