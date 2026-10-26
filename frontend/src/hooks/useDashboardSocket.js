@@ -71,11 +71,15 @@ export function useDashboardSocket() {
         }
       }
       currentSocket.onerror = () => currentSocket.close()
-      currentSocket.onclose = () => {
+      currentSocket.onclose = (event) => {
         if (socket !== currentSocket) return
         socket = null
         connectedRef.current = false
         setConnected(false)
+        if (event.code === 1008) {
+          window.dispatchEvent(new CustomEvent('auth:expired'))
+          return
+        }
         reconnect()
       }
     }

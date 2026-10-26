@@ -347,6 +347,24 @@ tbody tr:last-child td { border-bottom: 0; }
 .door-status div { display: grid; gap: 2px; }
 .door-status strong { font-size: 13px; }
 .door-status small { color: var(--muted); font-size: 11px; }
+.app-global-toast { position: fixed; z-index: 60; top: 18px; right: 18px; width: min(420px, calc(100vw - 36px)); }
+.auth-page { display: grid; min-height: 100vh; place-items: center; padding: var(--space-5); background: radial-gradient(circle at top left, var(--accent-soft), transparent 42%), var(--surface-subtle); }
+.auth-card { display: grid; gap: var(--space-5); width: min(440px, 100%); padding: clamp(24px, 6vw, 40px); box-shadow: var(--shadow-lg); }
+.auth-brand { display: flex; align-items: center; gap: 12px; }
+.auth-brand > span { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 14px; background: var(--accent); color: white; font-weight: 800; }
+.auth-brand div { display: grid; gap: 2px; }
+.auth-brand strong { color: var(--ink); font-size: var(--text-md); }
+.auth-brand small { color: var(--muted); font-size: var(--text-xs); }
+.auth-heading { display: grid; gap: var(--space-2); }
+.auth-heading h1, .auth-forbidden h1 { margin: 0; color: var(--ink); font-size: clamp(25px, 5vw, 32px); }
+.auth-heading p:last-child, .auth-forbidden p { margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.auth-form { display: grid; gap: var(--space-4); }
+.auth-form .ui-button { width: 100%; }
+.auth-error { margin: 0; color: var(--bad); font-size: var(--text-sm); font-weight: 650; }
+.auth-notice { margin: 0; padding: var(--space-3); border-radius: var(--radius-md); background: var(--warn-bg); color: var(--warn); font-size: var(--text-sm); }
+.auth-loading { display: grid; min-height: 100vh; place-items: center; color: var(--muted); }
+.auth-forbidden { justify-items: start; }
+.auth-forbidden a { color: var(--accent); font-weight: 700; }
 
 @media (max-width: 900px) {
   .app-shell { display: block; }
@@ -365,6 +383,8 @@ tbody tr:last-child td { border-bottom: 0; }
   .resident-registration-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
+  .app-global-toast { top: 10px; right: 10px; width: calc(100vw - 20px); }
+  .auth-page { padding: 14px; }
   .app-topbar { min-height: 64px; padding: 0 14px; }
   .app-topbar__context { display: none; }
   .app-topbar__account { gap: 7px; }

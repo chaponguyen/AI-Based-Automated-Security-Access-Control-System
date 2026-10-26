@@ -1,6 +1,8 @@
 // Các cờ mock chỉ bật khi Vite nhận giá trị "1" trong file môi trường.
 export const mockRegisterEnabled = import.meta.env.VITE_MOCK_REGISTER === '1'
 export const mockEventsEnabled = import.meta.env.VITE_MOCK_EVENTS === '1'
+// Chỉ bật tài khoản giả trong môi trường demo; không dùng các thông tin này khi gọi backend thật.
+export const mockAuthEnabled = import.meta.env.VITE_MOCK_AUTH === '1'
 // TODO(B17): bỏ mock quản trị sau khi backend B15/B16 sẵn sàng.
 export const mockAdminEnabled = import.meta.env.VITE_MOCK_ADMIN === '1'
 const configuredPrepareSeconds = Number(import.meta.env.VITE_REGISTER_PREPARE_SECONDS)
@@ -14,6 +16,38 @@ const mockDeletedLogIds = new Set()
 const mockDeletedLogRanges = []
 let mockDoorUntil = 0
 let mockDoorTimer = null
+let mockSessionUser = null
+
+// TODO(B17): bỏ phiên giả sau khi API đăng nhập B15 sẵn sàng.
+export async function mockLogin(username, password) {
+  if (!mockAuthEnabled) throw new Error('Mock xác thực đang tắt')
+  if (username === 'locked') {
+    const error = new Error('Tài khoản đang tạm khóa')
+    error.response = { status: 423, data: { reason: 'locked', retry_after_s: 30 } }
+    throw error
+  }
+  const accounts = {
+    manager: { password: 'manager123', user: { id: 1, username: 'manager', full_name: 'Quản lý demo', role: 'manager' } },
+    security: { password: 'security123', user: { id: 2, username: 'security', full_name: 'Nhân viên an ninh demo', role: 'security' } },
+  }
+  const account = accounts[String(username || '').trim()]
+  if (!account || account.password !== password) {
+    const error = new Error('Sai tên đăng nhập hoặc mật khẩu')
+    error.response = { status: 401, data: { reason: 'invalid_credentials' } }
+    throw error
+  }
+  mockSessionUser = account.user
+  return { ...mockSessionUser }
+}
+
+export async function mockGetAuthMe() {
+  return mockSessionUser ? { ...mockSessionUser } : null
+}
+
+export async function mockLogout() {
+  mockSessionUser = null
+  return { ok: true }
+}
 
 function dispatchMockDoorState(data) {
   window.dispatchEvent(new CustomEvent('dashboard:mock-event', { detail: { event: 'door_state', data } }))
