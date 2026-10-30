@@ -3,7 +3,7 @@ import os
 import time
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from services.time_service import to_api_iso
 from typing import Optional, Dict, Any, List, Tuple, Callable
 import numpy as np
@@ -266,9 +266,11 @@ class AutoVerifyService:
 
             last_event_formatted = None
             if self._last_event_at is not None:
-                last_event_formatted = to_api_iso(
-                    datetime.fromtimestamp(self._last_event_at), "DB_LOCAL"
-                )
+                # _last_event_at là epoch (time.time()), KHÔNG phụ thuộc múi giờ.
+                # Chuyển thẳng sang datetime aware UTC để ISO 8601 có offset +00:00.
+                last_event_formatted = datetime.fromtimestamp(
+                    self._last_event_at, tz=timezone.utc
+                ).isoformat()
 
             return {
                 "running": self._running,
@@ -574,6 +576,10 @@ class AutoVerifyService:
         for priority, track, final_res, decision_type, target_user_id in pending_actions:
             # 5. QUAN TRỌNG: Chỉ ghi ĐÚNG 1 dòng access_logs khi thực sự phát sự kiện
             log_entry = record_access(db, final_res)
+            # log_time là giờ máy KHÔNG có tzinfo, cùng quy ước DB_LOCAL:
+            # - nhánh 1: access_logs.timestamp do PostgreSQL func.now() ghi (DB_LOCAL);
+            # - nhánh 2 (dự phòng): datetime.now() giờ máy cục bộ (cũng là DB_LOCAL).
+            # Vì vậy gắn offset của DB là đúng, không phải UTC.
             log_time = log_entry.timestamp if (log_entry and log_entry.timestamp) else datetime.now()
 
             # Dựng thông báo announcement (display và spoken) cùng thời điểm với log

@@ -9,7 +9,7 @@ from datetime import datetime
 import logging
 from services.time_service import to_api_iso, parse_filter_dt
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -77,19 +77,38 @@ def get_audit_logs(
     # 3. Lọc theo khoảng thời gian from - to
     #    audit_logs.timestamp lưu UTC (Python utcnow()).
     #    parse_filter_dt chuyển chuỗi lọc sang naive theo quy ước UTC.
+    dt_from = None
+    dt_to = None
+
     if isinstance(from_time, str) and from_time.strip():
         try:
             dt_from = parse_filter_dt(from_time.strip(), "UTC")
-            query = query.filter(AuditLog.timestamp >= dt_from)
         except ValueError:
-            pass  # Bỏ qua nếu định dạng không hợp lệ
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Định dạng tham số 'from' không hợp lệ. Vui lòng dùng chuẩn ISO 8601 (ví dụ 2026-10-25T08:00:00+07:00).",
+            )
 
     if isinstance(to_time, str) and to_time.strip():
         try:
             dt_to = parse_filter_dt(to_time.strip(), "UTC")
-            query = query.filter(AuditLog.timestamp <= dt_to)
         except ValueError:
-            pass  # Bỏ qua nếu định dạng không hợp lệ
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Định dạng tham số 'to' không hợp lệ. Vui lòng dùng chuẩn ISO 8601 (ví dụ 2026-10-25T08:00:00+07:00).",
+            )
+
+    # from > to là khoảng thời gian vô nghĩa -> 422
+    if dt_from is not None and dt_to is not None and dt_from > dt_to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Tham số 'from' phải nhỏ hơn hoặc bằng 'to'.",
+        )
+
+    if dt_from is not None:
+        query = query.filter(AuditLog.timestamp >= dt_from)
+    if dt_to is not None:
+        query = query.filter(AuditLog.timestamp <= dt_to)
 
     limit_val = limit if isinstance(limit, int) and 1 <= limit <= 1000 else 200
 

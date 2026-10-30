@@ -106,10 +106,12 @@ def get_logs(
     # 3. Lọc theo khoảng thời gian from - to
     #    access_logs.timestamp là DB_LOCAL (PostgreSQL func.now()).
     #    parse_filter_dt chuyển chuỗi lọc sang naive theo quy ước DB_LOCAL.
+    dt_from = None
+    dt_to = None
+
     if isinstance(from_time, str) and from_time.strip():
         try:
             dt_from = parse_filter_dt(from_time.strip(), "DB_LOCAL")
-            query = query.filter(AccessLog.timestamp >= dt_from)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -119,12 +121,23 @@ def get_logs(
     if isinstance(to_time, str) and to_time.strip():
         try:
             dt_to = parse_filter_dt(to_time.strip(), "DB_LOCAL")
-            query = query.filter(AccessLog.timestamp <= dt_to)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Định dạng tham số 'to' không hợp lệ. Vui lòng dùng chuẩn ISO 8601 (ví dụ 2026-10-25T08:00:00).",
             )
+
+    # from > to là khoảng thời gian vô nghĩa -> 422
+    if dt_from is not None and dt_to is not None and dt_from > dt_to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Tham số 'from' phải nhỏ hơn hoặc bằng 'to'.",
+        )
+
+    if dt_from is not None:
+        query = query.filter(AccessLog.timestamp >= dt_from)
+    if dt_to is not None:
+        query = query.filter(AccessLog.timestamp <= dt_to)
 
     limit_val = limit if isinstance(limit, int) else 200
 
