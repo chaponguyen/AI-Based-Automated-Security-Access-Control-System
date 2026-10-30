@@ -13,16 +13,7 @@ import Toast from '../components/ui/Toast.jsx'
 import { api, getApiErrorMessage } from '../services/api.js'
 import { mockAdminEnabled, mockDeleteLogs, mockFilterDeletedLogs } from '../services/mock.js'
 import { getReasonLabel } from '../services/reasons.js'
-
-function localDateBoundary(value, endOfDay = false) {
-  if (!value) return ''
-  return new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00'}`).toISOString()
-}
-
-function formatTimestamp(value) {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN')
-}
+import { dateInputBoundaryToISOString, formatDateTime } from '../utils/time.js'
 
 export default function AccessLogs() {
   const { user } = useOutletContext() || {}
@@ -54,8 +45,8 @@ export default function AccessLogs() {
     const params = { limit: 1000 }
     if (query.trim()) params.q = query.trim()
     if (decision) params.decision = decision
-    if (fromDate) params.from = localDateBoundary(fromDate)
-    if (toDate) params.to = localDateBoundary(toDate, true)
+    if (fromDate) params.from = dateInputBoundaryToISOString(fromDate)
+    if (toDate) params.to = dateInputBoundaryToISOString(toDate, true)
     try {
       const { data } = await api.get('/logs', { params })
       if (activeRef.current) setLogs(mockAdminEnabled ? mockFilterDeletedLogs(Array.isArray(data) ? data : []) : Array.isArray(data) ? data : [])
@@ -115,7 +106,7 @@ export default function AccessLogs() {
     setCountLoading(true)
     setDeleteError('')
     try {
-      const { data } = await api.get('/logs', { params: { from: localDateBoundary(fromDate), to: localDateBoundary(toDate, true), limit: 10000 } })
+      const { data } = await api.get('/logs', { params: { from: dateInputBoundaryToISOString(fromDate), to: dateInputBoundaryToISOString(toDate, true), limit: 10000 } })
       const countRows = mockAdminEnabled ? mockFilterDeletedLogs(Array.isArray(data) ? data : []) : (Array.isArray(data) ? data : [])
       setDeleteCount(countRows.length)
       setDeleteMode('range')
@@ -132,7 +123,7 @@ export default function AccessLogs() {
     setDeleteError('')
     const payload = deleteMode === 'selected'
       ? { ids: [...selectedIds] }
-      : { from: localDateBoundary(fromDate), to: localDateBoundary(toDate, true) }
+      : { from: dateInputBoundaryToISOString(fromDate), to: dateInputBoundaryToISOString(toDate, true) }
     try {
       const result = mockAdminEnabled ? await mockDeleteLogs(payload, deleteCount) : (await api.post('/logs/delete', payload)).data
       const deleted = Number(result?.deleted ?? deleteCount)
@@ -163,9 +154,9 @@ export default function AccessLogs() {
     ...(isManager ? [{
       key: 'select',
       label: <input type="checkbox" aria-label="Chọn tất cả nhật ký đang hiển thị" checked={allVisibleSelected} onChange={toggleAll} />,
-      render: (row) => <input type="checkbox" aria-label={`Chọn nhật ký ${formatTimestamp(row.timestamp)}`} checked={selectedIds.has(row.id)} onChange={() => toggleSelected(row.id)} disabled={row.id === undefined || row.id === null} />,
+      render: (row) => <input type="checkbox" aria-label={`Chọn nhật ký ${formatDateTime(row.timestamp)}`} checked={selectedIds.has(row.id)} onChange={() => toggleSelected(row.id)} disabled={row.id === undefined || row.id === null} />,
     }] : []),
-    { key: 'timestamp', label: 'Thời gian', render: (row) => formatTimestamp(row.timestamp) },
+    { key: 'timestamp', label: 'Thời gian', render: (row) => formatDateTime(row.timestamp) },
     { key: 'name', label: 'Tên', render: (row) => row.name || row.user?.full_name || 'Không xác định' },
     { key: 'similarity', label: 'Độ giống', render: (row) => typeof row.similarity === 'number' ? row.similarity.toFixed(2) : '—' },
     { key: 'liveness', label: 'Chống giả mạo', render: (row) => row.liveness === true ? 'Đạt' : row.liveness === false ? 'Không đạt' : '—' },

@@ -13,16 +13,10 @@ import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
 import { api, getApiErrorMessage } from '../services/api.js'
 import { mockAdminEnabled, mockGetDoorStatus, mockOpenDoor } from '../services/mock.js'
 import { getReasonLabel } from '../services/reasons.js'
+import { dateInputBoundaryToISOString, formatTime, getTodayDateInput } from '../utils/time.js'
 
-function startOfLocalDayIso() {
-  const start = new Date()
-  start.setHours(0, 0, 0, 0)
-  return start.toISOString()
-}
-
-function formatTime(value) {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleTimeString('vi-VN')
+function startOfVietnamDayIso() {
+  return dateInputBoundaryToISOString(getTodayDateInput())
 }
 
 function getReportedDoorSeconds(data) {
@@ -94,7 +88,7 @@ export default function Dashboard() {
     setLogsLoading(true)
     setLogsError('')
     try {
-      const { data } = await api.get('/logs', { params: { from: startOfLocalDayIso(), limit: 200 } })
+      const { data } = await api.get('/logs', { params: { from: startOfVietnamDayIso(), limit: 200 } })
       setLogs(Array.isArray(data) ? data : [])
     } catch (error) {
       setLogsError(getApiErrorMessage(error, 'Không tải được hoạt động hôm nay.'))

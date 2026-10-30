@@ -1,10 +1,6 @@
 // Agent 3 — Bảng nhật ký dùng chung
 import { getReasonLabel } from '../services/reasons.js'
-
-function formatTimestamp(value) {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN')
-}
+import { formatDateTime } from '../utils/time.js'
 
 export default function LogTable({ rows = [] }) {
   return (
@@ -15,7 +11,7 @@ export default function LogTable({ rows = [] }) {
         </thead>
         <tbody>{rows.map((row, index) => (
           <tr key={`${row.timestamp}-${row.name}-${index}`}>
-            <td>{formatTimestamp(row.timestamp)}</td>
+            <td>{formatDateTime(row.timestamp)}</td>
             <td>{row.name || 'Không xác định'}</td>
             <td>{typeof row.similarity === 'number' ? row.similarity.toFixed(2) : '—'}</td>
             <td>{row.liveness === true ? 'Đạt' : row.liveness === false ? 'Không đạt' : '—'}</td>

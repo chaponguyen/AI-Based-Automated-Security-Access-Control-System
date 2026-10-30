@@ -7,14 +7,10 @@ import DoorStatus from '../components/DoorStatus.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'
 import { getReasonLabel } from '../services/reasons.js'
+import { formatTime } from '../utils/time.js'
 
 function getResidentName(result) {
   return result?.user?.full_name || result?.user?.name || result?.name || 'Không xác định'
-}
-
-function formatEventTime(value) {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleTimeString('vi-VN')
 }
 
 export default function Verify() {
@@ -67,7 +63,7 @@ export default function Verify() {
               </div>
               {lastResult.announcement?.display && (
                 <section className={`announcement-card ${granted ? 'announcement-card--granted' : 'announcement-card--denied'}`}>
-                  <div className="announcement-card__heading"><strong>Thông báo</strong><time dateTime={lastResult.timestamp}>{formatEventTime(lastResult.timestamp)}</time></div>
+                  <div className="announcement-card__heading"><strong>Thông báo</strong><time dateTime={lastResult.timestamp}>{formatTime(lastResult.timestamp)}</time></div>
                   <p className="announcement-card__display">{lastResult.announcement.display}</p>
                   {lastResult.announcement.spoken && <p className="announcement-card__spoken">Loa đọc: {lastResult.announcement.spoken}</p>}
                 </section>

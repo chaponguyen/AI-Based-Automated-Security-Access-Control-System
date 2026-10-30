@@ -9,11 +9,7 @@ import Select from '../components/ui/Select.jsx'
 import Table from '../components/ui/Table.jsx'
 import { api, getApiErrorMessage } from '../services/api.js'
 import { mockAdminEnabled, mockGetAudit } from '../services/mock.js'
-
-function formatTimestamp(value) {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN')
-}
+import { formatDateTime } from '../utils/time.js'
 
 export default function AuditLogs() {
   const { user } = useOutletContext() || {}
@@ -57,7 +53,7 @@ export default function AuditLogs() {
   }
 
   const columns = [
-    { key: 'timestamp', label: 'Thời gian', render: (row) => formatTimestamp(row.timestamp) },
+    { key: 'timestamp', label: 'Thời gian', render: (row) => formatDateTime(row.timestamp) },
     { key: 'staff_username', label: 'Nhân viên' },
     { key: 'action', label: 'Thao tác', render: (row) => <Badge tone="info">{row.action}</Badge> },
     { key: 'target_type', label: 'Đối tượng' },

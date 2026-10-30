@@ -19,14 +19,9 @@ import {
   mockGetStaff,
   mockUpdateStaff,
 } from '../services/mock.js'
+import { formatDate, formatDateTime } from '../utils/time.js'
 
 const emptyForm = { username: '', full_name: '', password: '', role: 'security' }
-
-function formatTimestamp(value) {
-  if (!value) return 'Chưa đăng nhập'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN')
-}
 
 function staffErrorMessage(error) {
   const reason = error?.response?.data?.reason
@@ -176,8 +171,8 @@ export default function Staff() {
     { key: 'full_name', label: 'Họ tên' },
     { key: 'role', label: 'Vai trò', render: (staff) => <Badge tone={staff.role === 'manager' ? 'info' : 'neutral'}>{staff.role === 'manager' ? 'Quản lý' : 'Nhân viên an ninh'}</Badge> },
     { key: 'is_active', label: 'Trạng thái', render: (staff) => <Badge tone={staff.is_active ? 'success' : 'warning'}>{staff.is_active ? 'Đang hoạt động' : 'Đã tắt'}</Badge> },
-    { key: 'last_login_at', label: 'Đăng nhập gần nhất', render: (staff) => formatTimestamp(staff.last_login_at) },
-    { key: 'created_at', label: 'Ngày tạo', render: (staff) => formatTimestamp(staff.created_at) },
+    { key: 'last_login_at', label: 'Đăng nhập gần nhất', render: (staff) => formatDateTime(staff.last_login_at) },
+    { key: 'created_at', label: 'Ngày tạo', render: (staff) => formatDate(staff.created_at) },
     { key: 'actions', label: 'Thao tác', render: (staff) => (
       <div className="staff-action-group">
         <Button variant="secondary" size="sm" onClick={() => openEdit(staff)} aria-label={`Sửa ${staff.username}`}>Sửa</Button>
