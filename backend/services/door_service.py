@@ -3,7 +3,7 @@
 Quản lý trạng thái cửa trong bộ nhớ, an toàn luồng:
 - Trạng thái: "closed" hoặc "open".
 - Khi mở cửa: chuyển sang "open", hẹn giờ DOOR_OPEN_SECONDS (mặc định 10 giây).
-- Phát sự kiện WebSocket door_state {state, until, open_seconds, by, reason}.
+- Phát sự kiện WebSocket door_state {state, until, open_seconds, remaining_seconds, by, reason}.
 - Khi đang mở mà có yêu cầu mở tiếp: trả already_open=True và KHÔNG kéo dài thời gian mở.
 - Khi hết giờ: tự động chuyển về "closed" và phát sự kiện door_state "closed".
 - Tắt backend: hủy timer sạch sẽ, không rò rỉ luồng nền.
@@ -13,7 +13,7 @@ LƯU Ý QUAN TRỌNG:
 (khóa thật sẽ được kết nối qua STM32/ESP32 ở giai đoạn 2).
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import os
 import re
@@ -145,12 +145,22 @@ class DoorService:
         except Exception as e:
             logger.debug("Không thể broadcast sự kiện door_state: %s", e)
 
+    def _remaining_seconds(self) -> Optional[float]:
+        """Số giây còn lại (chưa khóa; chỉ gọi trong lock)."""
+        if self._state != "open" or self._until is None:
+            return None
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # _until được lưu naive UTC (datetime.utcnow())
+        diff = (self._until - now).total_seconds()
+        return round(max(0.0, diff), 1)
+
     def get_status(self) -> Dict[str, Any]:
         """Lấy trạng thái cửa hiện tại (GET /api/door/status)."""
         with self._lock:
             return {
                 "state": self._state,
                 "until": self._until.isoformat() if self._until else None,
+                "remaining_seconds": self._remaining_seconds(),
                 "by": self._by,
             }
 
@@ -161,6 +171,7 @@ class DoorService:
                 "state": self._state,
                 "until": self._until.isoformat() if self._until else None,
                 "open_seconds": self._open_seconds,
+                "remaining_seconds": self._remaining_seconds(),
                 "by": self._by,
                 "reason": self._reason,
             }
