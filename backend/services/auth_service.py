@@ -15,6 +15,7 @@ import hmac
 import logging
 import os
 import secrets
+from dataclasses import dataclass
 from typing import Optional, Tuple
 from sqlalchemy.orm import Session
 
@@ -48,6 +49,21 @@ _dummy_derived = hashlib.scrypt(
     dklen=KEY_LEN,
 ).hex()
 DUMMY_PASSWORD_HASH = f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${DUMMY_SALT_HEX}${_dummy_derived}"
+
+
+@dataclass
+class StaffInfo:
+    """Snapshot an toàn luồng các trường cần dùng của StaffAccount.
+
+    Trả thay cho đối tượng ORM khi Session có thể bị đóng trước khi
+    truy cập thuộc tính (ví dụ: vòng lặp ping WebSocket).
+    Không phụ thuộc vào Session; không thể DetachedInstanceError.
+    """
+    id: int
+    username: str
+    role: str          # 'security' | 'manager'
+    is_active: bool
+    full_name: str
 
 
 def hash_password(password: str) -> str:
@@ -187,6 +203,26 @@ def get_session_user(db: Session, raw_token: Optional[str]) -> Optional[StaffAcc
         db.rollback()
 
     return staff
+
+
+def get_session_info(db: Session, raw_token: Optional[str]) -> Optional[StaffInfo]:
+    """Như get_session_user nhưng trả StaffInfo (dataclass thuần) thay vì ORM object.
+
+    Dùng khi Session sẽ bị đóng trước khi dùng kết quả (ví dụ: vòng lặp
+    ping WebSocket). Đọc toàn bộ trường cần thiết TRONG phạm vi Session.
+    Trả None nếu phiên không hợp lệ, hết hạn hoặc tài khoản bị vô hiệu.
+    """
+    staff_orm = get_session_user(db, raw_token)
+    if staff_orm is None:
+        return None
+    # Đọc toàn bộ trường khi ORM object còn gắn Session
+    return StaffInfo(
+        id=staff_orm.id,
+        username=staff_orm.username,
+        role=staff_orm.role,
+        is_active=bool(staff_orm.is_active),
+        full_name=staff_orm.full_name or "",
+    )
 
 
 def revoke_session(db: Session, raw_token: Optional[str]) -> bool:

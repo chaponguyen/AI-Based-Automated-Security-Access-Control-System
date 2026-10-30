@@ -18,8 +18,8 @@
 | DELETE | `/api/staff/{id}` | — (yêu cầu role `manager`) | 200 `{"ok": true}`; 409 `{"reason": "last_manager"\|"self_protected"}`; 404 |
 | DELETE | `/api/residents/{id}` | — (yêu cầu role `manager`) | 200 `{"ok": true, "deleted": {id, user_code, full_name}}`; 404 |
 | GET | `/api/audit` | `?limit=&action=&q=` (yêu cầu role `manager`) | `[{id, timestamp, staff_username, action, target_type, target_id, detail}]` (mới nhất trước, limit mặc định 200, tối đa 1000) |
-| POST | `/api/door/open` | `{reason?: string}` (mọi staff) | 200 `{"state": "open", "open_seconds": 10, "until": ISO, "already_open": bool}` |
-| GET | `/api/door/status` | — (mọi staff) | `{"state": "closed"\|"open", "until": ISO\|null, "by": str\|null}` |
+| POST | `/api/door/open` | `{reason?: string}` (mọi staff) | 200 `{"state": "open", "open_seconds": 10, "until": ISO8601+tz, "remaining_seconds": float, "already_open": bool}` |
+| GET | `/api/door/status` | — (mọi staff) | `{"state": "closed"\|"open", "until": ISO8601+tz\|null, "remaining_seconds": float, "by": str\|null}` |
 | GET | `/api/health` | — (công khai) | `{status: "ok"}` |
 | GET | `/api/camera/status` | — | `{running, fps, width, height, viewers}` |
 | GET | `/api/stream` | — | MJPEG `multipart/x-mixed-replace; boundary=frame` (chỉ mã hóa khi có người xem) |
@@ -32,7 +32,7 @@
 `reason` dùng mã cố định: `ok`, `not_matched`, `spoof_detected`, `inactive_user`, `no_face`, `multiple_faces`, `low_quality`.
 
 `access_result.data` = `{user, decision, reason, similarity, box, timestamp, announcement: {display, spoken, kind}}` (`kind`: `granted` | `stranger` | `inactive`).
-`door_state.data` = `{"state": "open"|"closed", "until": ISO|null, "open_seconds": int, "by": str|null, "reason": str|null}` (gửi trạng thái hiện tại ngay khi WS kết nối).
+`door_state.data` = `{"state": "open"|"closed", "until": ISO8601+tz|null, "open_seconds": int, "remaining_seconds": float, "by": str|null, "reason": str|null}` (gửi trạng thái hiện tại ngay khi WS kết nối; `until` luôn có múi giờ dạng `+00:00`; `remaining_seconds` = 0 khi cửa đóng).
 `record_progress.data` = `{t_ms, got, kept}`. `ai_status.data` = `{running, fps, tracking, last_event_at}`.
 
 ## Bảo mật và Phân quyền (B15 - B16)

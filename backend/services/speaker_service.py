@@ -21,6 +21,7 @@ SPEAK_RATE = int(os.getenv("SPEAK_RATE", "170"))
 SPEAK_VOLUME = float(os.getenv("SPEAK_VOLUME", "1.0"))
 ALERT_REPEAT = int(os.getenv("ALERT_REPEAT", "2"))
 DEDUP_SECONDS = float(os.getenv("DEDUP_SECONDS", "5.0"))
+SPEAK_TIMEOUT_S = float(os.getenv("SPEAK_TIMEOUT_S", "8"))
 MAX_QUEUE_SIZE = 5
 
 # Đường dẫn thư mục lưu đệm âm thanh
@@ -318,8 +319,8 @@ async def _async_edge_communicate(text: str, output_path: str, voice: str, rate_
     return os.path.exists(output_path) and os.path.getsize(output_path) > 100
 
 
-def synthesize_edge_tts(text: str, output_path: str, voice: Optional[str] = None, timeout_sec: float = 8.0) -> bool:
-    """Tổng hợp giọng đọc tiếng Việt qua edge-tts với timeout cứng 8 giây để không treo luồng."""
+def synthesize_edge_tts(text: str, output_path: str, voice: Optional[str] = None, timeout_sec: float = SPEAK_TIMEOUT_S) -> bool:
+    """Tổng hợp giọng đọc tiếng Việt qua edge-tts với timeout cứng SPEAK_TIMEOUT_S giây để không treo luồng."""
     if not voice:
         voice = SPEAK_VOICE_ID or "vi-VN-NamMinhNeural"
 
@@ -354,7 +355,7 @@ def preload_alert_cache() -> bool:
 
         logger.info("Tiền tổng hợp câu cảnh báo người lạ vào cache...")
         voice = SPEAK_VOICE_ID or "vi-VN-NamMinhNeural"
-        ok = synthesize_edge_tts(STRANGER_ALERT_TEXT, cache_file, voice=voice, timeout_sec=8.0)
+        ok = synthesize_edge_tts(STRANGER_ALERT_TEXT, cache_file, voice=voice, timeout_sec=SPEAK_TIMEOUT_S)
         if ok:
             logger.info("Tiền tổng hợp câu cảnh báo người lạ thành công (%s bytes)", os.path.getsize(cache_file))
             return True
@@ -441,7 +442,7 @@ def speak(text: str, is_alert: bool = False, voice_override: Optional[str] = Non
                 if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1000:
                     audio_file = temp_path
                 else:
-                    ok = synthesize_edge_tts(text_clean, temp_path, voice=voice, timeout_sec=8.0)
+                    ok = synthesize_edge_tts(text_clean, temp_path, voice=voice, timeout_sec=SPEAK_TIMEOUT_S)
                     if ok:
                         audio_file = temp_path
 

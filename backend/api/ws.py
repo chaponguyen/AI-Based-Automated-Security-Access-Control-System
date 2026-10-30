@@ -133,6 +133,9 @@ async def _ping_heartbeat(websocket: WebSocket, raw_token: str):
     
     Nếu phiên bị thu hồi hoặc tài khoản bị tắt (is_active=False) thì đóng kết nối
     với mã 1008 trong vòng ~20-30 giây.
+
+    Dùng get_session_info() trả StaffInfo (dataclass thuần) để tránh
+    DetachedInstanceError khi đọc thuộc tính ORM sau khi Session đóng.
     """
     from database.database import SessionLocal
     from services import auth_service
@@ -140,19 +143,17 @@ async def _ping_heartbeat(websocket: WebSocket, raw_token: str):
     try:
         while True:
             await asyncio.sleep(20)
-            # Kiểm tra hiệu lực phiên trong CSDL
+            # Kiểm tra hiệu lực phiên trong CSDL — mở Session mới mỗi lần
             db = SessionLocal()
-            is_valid = False
+            info = None
             try:
-                staff = auth_service.get_session_user(db, raw_token)
-                if staff and staff.is_active:
-                    is_valid = True
+                info = auth_service.get_session_info(db, raw_token)
             except Exception as e:
                 logger.debug("Lỗi kiểm tra phiên định kỳ trong WS ping: %s", e)
             finally:
                 db.close()
 
-            if not is_valid:
+            if not info or not info.is_active:
                 logger.warning("Phiên WebSocket bị thu hồi hoặc tài khoản bị tắt, đóng kết nối với code 1008.")
                 await websocket.close(code=1008, reason="session_revoked")
                 break
@@ -183,15 +184,15 @@ async def websocket_dashboard(websocket: WebSocket):
     from services import auth_service
 
     db = SessionLocal()
-    staff = None
+    info = None
     try:
-        staff = auth_service.get_session_user(db, raw_token)
+        info = auth_service.get_session_info(db, raw_token)
     except Exception as e:
         logger.warning("Lỗi kiểm tra phiên khi kết nối WS: %s", e)
     finally:
         db.close()
 
-    if not staff or not staff.is_active:
+    if not info or not info.is_active:
         logger.warning("WebSocket bị từ chối: phiên không hợp lệ hoặc tài khoản bị vô hiệu hóa, đóng với code 1008.")
         await websocket.close(code=1008, reason="not_authenticated")
         return

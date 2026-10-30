@@ -67,7 +67,7 @@ class DoorService:
         - Nếu cửa đang mở: trả already_open=True và KHÔNG kéo dài thời gian mở.
         """
         reason_clean = _clean_reason(reason)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         with self._lock:
             # 1. Trường hợp cửa đã đang mở: KHÔNG kéo dài thời gian hẹn giờ
@@ -83,6 +83,7 @@ class DoorService:
                     "state": "open",
                     "open_seconds": self._open_seconds,
                     "until": self._until.isoformat(),
+                    "remaining_seconds": self._remaining_seconds() or 0,
                     "already_open": True,
                 }
 
@@ -119,6 +120,7 @@ class DoorService:
             "state": "open",
             "open_seconds": self._open_seconds,
             "until": until_iso,
+            "remaining_seconds": float(self._open_seconds),
             "already_open": False,
         }
 
@@ -149,29 +151,30 @@ class DoorService:
         """Số giây còn lại (chưa khóa; chỉ gọi trong lock)."""
         if self._state != "open" or self._until is None:
             return None
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        # _until được lưu naive UTC (datetime.utcnow())
+        now = datetime.now(timezone.utc)
         diff = (self._until - now).total_seconds()
         return round(max(0.0, diff), 1)
 
     def get_status(self) -> Dict[str, Any]:
         """Lấy trạng thái cửa hiện tại (GET /api/door/status)."""
         with self._lock:
+            remaining = self._remaining_seconds()
             return {
                 "state": self._state,
                 "until": self._until.isoformat() if self._until else None,
-                "remaining_seconds": self._remaining_seconds(),
+                "remaining_seconds": remaining if remaining is not None else 0,
                 "by": self._by,
             }
 
     def get_door_state_event_payload(self) -> Dict[str, Any]:
         """Tạo payload cho sự kiện WebSocket door_state đúng hợp đồng API_CONTRACT."""
         with self._lock:
+            remaining = self._remaining_seconds()
             return {
                 "state": self._state,
                 "until": self._until.isoformat() if self._until else None,
                 "open_seconds": self._open_seconds,
-                "remaining_seconds": self._remaining_seconds(),
+                "remaining_seconds": remaining if remaining is not None else 0,
                 "by": self._by,
                 "reason": self._reason,
             }

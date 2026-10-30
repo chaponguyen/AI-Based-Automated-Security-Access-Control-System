@@ -12,7 +12,7 @@ if os.path.exists(_backend_env):
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL) if DATABASE_URL else None
-SessionLocal = sessionmaker(bind=engine, autoflush=False) if engine else None
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False) if engine else None
 Base = declarative_base()
 
 

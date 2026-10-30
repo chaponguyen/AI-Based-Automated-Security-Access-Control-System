@@ -30,12 +30,14 @@ class DoorOpenResponse(BaseModel):
     state: str = "open"
     open_seconds: int = 10
     until: str
+    remaining_seconds: float = 10.0
     already_open: bool
 
 
 class DoorStatusResponse(BaseModel):
     state: str
     until: Optional[str] = None
+    remaining_seconds: float = 0
     by: Optional[str] = None
 
 
