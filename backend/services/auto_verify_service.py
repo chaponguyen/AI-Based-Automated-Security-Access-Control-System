@@ -4,6 +4,7 @@ import time
 import logging
 import threading
 from datetime import datetime
+from services.time_service import to_api_iso
 from typing import Optional, Dict, Any, List, Tuple, Callable
 import numpy as np
 from dotenv import load_dotenv
@@ -265,7 +266,9 @@ class AutoVerifyService:
 
             last_event_formatted = None
             if self._last_event_at is not None:
-                last_event_formatted = datetime.fromtimestamp(self._last_event_at).isoformat()
+                last_event_formatted = to_api_iso(
+                    datetime.fromtimestamp(self._last_event_at), "DB_LOCAL"
+                )
 
             return {
                 "running": self._running,
@@ -583,7 +586,7 @@ class AutoVerifyService:
                 "reason": final_res.get("reason"),
                 "similarity": final_res.get("similarity"),
                 "box": [int(v) for v in track.bbox],
-                "timestamp": log_time.isoformat() if hasattr(log_time, "isoformat") else str(log_time),
+                "timestamp": to_api_iso(log_time, "DB_LOCAL"),
                 "announcement": ann,
             }
 

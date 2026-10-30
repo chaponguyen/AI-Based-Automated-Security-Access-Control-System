@@ -21,6 +21,7 @@ from api.deps import require_manager
 from database.database import get_db
 from database.models import StaffAccount
 from services import auth_service
+from services.time_service import to_api_iso
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,8 @@ class StaffResponse(BaseModel):
     full_name: str
     role: str
     is_active: bool
-    last_login_at: Optional[datetime.datetime] = None
-    created_at: Optional[datetime.datetime] = None
+    last_login_at: Optional[str] = None  # ISO 8601 có offset (UTC)
+    created_at: Optional[str] = None     # ISO 8601 có offset (DB_LOCAL)
 
     class Config:
         from_attributes = True
@@ -82,11 +83,27 @@ def _record_audit(
         raise e
 
 
+def _staff_to_response(s: StaffAccount) -> StaffResponse:
+    """Chuyển ORM StaffAccount thành StaffResponse với thời gian ISO 8601 có offset."""
+    return StaffResponse(
+        id=s.id,
+        username=s.username,
+        full_name=s.full_name,
+        role=s.role,
+        is_active=s.is_active,
+        last_login_at=to_api_iso(s.last_login_at, "UTC"),
+        created_at=to_api_iso(s.created_at, "DB_LOCAL"),
+    )
+
+
 @router.get("", response_model=List[StaffResponse])
 def get_staff_list(db: Session = Depends(get_db)):
     """Lấy danh sách tất cả tài khoản nhân viên trong hệ thống (manager)."""
     staff_list = db.query(StaffAccount).order_by(StaffAccount.id.asc()).all()
-    return staff_list
+    return [
+        _staff_to_response(s)
+        for s in staff_list
+    ]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=StaffResponse)
@@ -168,7 +185,7 @@ def create_staff(
         detail=f"Tạo tài khoản {new_staff.username} vai trò {new_staff.role}",
     )
 
-    return new_staff
+    return _staff_to_response(new_staff)
 
 
 @router.patch("/{id}", response_model=StaffResponse)
@@ -289,7 +306,7 @@ def update_staff(
         detail=", ".join(details) if details else "không thay đổi",
     )
 
-    return target
+    return _staff_to_response(target)
 
 
 @router.delete("/{id}")

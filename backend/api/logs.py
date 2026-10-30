@@ -2,6 +2,7 @@
 import logging
 from datetime import datetime
 from typing import Any, List, Optional
+from services.time_service import to_api_iso, parse_filter_dt
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -41,7 +42,7 @@ def _record_audit(
 
 class LogResponse(BaseModel):
     id: int
-    timestamp: Optional[datetime] = None
+    timestamp: Optional[str] = None  # ISO 8601 có offset (DB_LOCAL)
     name: str
     similarity: Optional[float] = None
     liveness: Optional[bool] = None
@@ -103,11 +104,11 @@ def get_logs(
             query = query.filter(name_condition)
 
     # 3. Lọc theo khoảng thời gian from - to
+    #    access_logs.timestamp là DB_LOCAL (PostgreSQL func.now()).
+    #    parse_filter_dt chuyển chuỗi lọc sang naive theo quy ước DB_LOCAL.
     if isinstance(from_time, str) and from_time.strip():
         try:
-            dt_from = datetime.fromisoformat(from_time.strip().replace("Z", "+00:00"))
-            if dt_from.tzinfo is not None:
-                dt_from = dt_from.astimezone().replace(tzinfo=None)
+            dt_from = parse_filter_dt(from_time.strip(), "DB_LOCAL")
             query = query.filter(AccessLog.timestamp >= dt_from)
         except ValueError:
             raise HTTPException(
@@ -117,9 +118,7 @@ def get_logs(
 
     if isinstance(to_time, str) and to_time.strip():
         try:
-            dt_to = datetime.fromisoformat(to_time.strip().replace("Z", "+00:00"))
-            if dt_to.tzinfo is not None:
-                dt_to = dt_to.astimezone().replace(tzinfo=None)
+            dt_to = parse_filter_dt(to_time.strip(), "DB_LOCAL")
             query = query.filter(AccessLog.timestamp <= dt_to)
         except ValueError:
             raise HTTPException(
@@ -136,12 +135,13 @@ def get_logs(
         .all()
     )
 
+    # access_logs.timestamp lưu DB_LOCAL — gắn offset thực tế của DB
     logs_list = []
     for log, full_name in results:
         logs_list.append(
             LogResponse(
                 id=log.id,
-                timestamp=log.timestamp,
+                timestamp=to_api_iso(log.timestamp, "DB_LOCAL"),
                 name=full_name if full_name is not None else "Không xác định",
                 similarity=log.similarity,
                 liveness=log.liveness,
@@ -209,9 +209,7 @@ def delete_logs(
             )
 
         try:
-            dt_from = datetime.fromisoformat(payload.from_time.strip().replace("Z", "+00:00"))
-            if dt_from.tzinfo is not None:
-                dt_from = dt_from.astimezone().replace(tzinfo=None)
+            dt_from = parse_filter_dt(payload.from_time.strip(), "DB_LOCAL")
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -219,9 +217,7 @@ def delete_logs(
             )
 
         try:
-            dt_to = datetime.fromisoformat(payload.to_time.strip().replace("Z", "+00:00"))
-            if dt_to.tzinfo is not None:
-                dt_to = dt_to.astimezone().replace(tzinfo=None)
+            dt_to = parse_filter_dt(payload.to_time.strip(), "DB_LOCAL")
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -7,7 +7,7 @@ Bảng audit_logs là bất biến (append-only), TUYỆT ĐỐI KHÔNG có rout
 
 from datetime import datetime
 import logging
-from services.time_service import to_api_iso
+from services.time_service import to_api_iso, parse_filter_dt
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -41,6 +41,8 @@ def get_audit_logs(
     limit: int = Query(200, ge=1, le=1000, description="Số lượng dòng tối đa (mặc định 200, tối đa 1000)"),
     action: Optional[str] = Query(None, description="Lọc theo hành động (ví dụ: login, resident_registered, ...)"),
     q: Optional[str] = Query(None, description="Tìm kiếm theo username, mô tả detail hoặc target_id"),
+    from_time: Optional[str] = Query(None, alias="from", description="Thời điểm bắt đầu (ISO 8601)"),
+    to_time: Optional[str] = Query(None, alias="to", description="Thời điểm kết thúc (ISO 8601)"),
     current_staff: StaffAccount = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
@@ -49,6 +51,7 @@ def get_audit_logs(
     Quy tắc:
     - Sắp xếp mới nhất trước (timestamp giảm dần, id giảm dần).
     - Hỗ trợ lọc theo action và tìm kiếm tự do theo từ khóa q.
+    - Hỗ trợ lọc theo khoảng thời gian from/to (audit_logs.timestamp lưu UTC).
     - Giới hạn limit từ 1 đến 1000 dòng (mặc định 200).
     """
     query = db.query(AuditLog)
@@ -71,9 +74,26 @@ def get_audit_logs(
             )
         )
 
+    # 3. Lọc theo khoảng thời gian from - to
+    #    audit_logs.timestamp lưu UTC (Python utcnow()).
+    #    parse_filter_dt chuyển chuỗi lọc sang naive theo quy ước UTC.
+    if isinstance(from_time, str) and from_time.strip():
+        try:
+            dt_from = parse_filter_dt(from_time.strip(), "UTC")
+            query = query.filter(AuditLog.timestamp >= dt_from)
+        except ValueError:
+            pass  # Bỏ qua nếu định dạng không hợp lệ
+
+    if isinstance(to_time, str) and to_time.strip():
+        try:
+            dt_to = parse_filter_dt(to_time.strip(), "UTC")
+            query = query.filter(AuditLog.timestamp <= dt_to)
+        except ValueError:
+            pass  # Bỏ qua nếu định dạng không hợp lệ
+
     limit_val = limit if isinstance(limit, int) and 1 <= limit <= 1000 else 200
 
-    # 3. Sắp xếp mới nhất trước
+    # 4. Sắp xếp mới nhất trước
     results = (
         query.order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
         .limit(limit_val)
@@ -93,3 +113,4 @@ def get_audit_logs(
         )
         for r in results
     ]
+
