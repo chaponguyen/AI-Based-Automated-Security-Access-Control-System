@@ -25,6 +25,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Không thể gán event loop cho WebSocket: %s", e)
 
+    # (0b) Đọc offset timezone của DB một lần lúc khởi động
+    try:
+        from services import time_service
+        time_service.init_db_offset()
+    except Exception as e:
+        logger.warning("Không thể đọc timezone DB: %s", e)
+
     # (1) Khởi động camera và luồng nền (LocalCamera)
     camera = None
     try:

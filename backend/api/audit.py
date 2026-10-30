@@ -7,6 +7,7 @@ Bảng audit_logs là bất biến (append-only), TUYỆT ĐỐI KHÔNG có rout
 
 from datetime import datetime
 import logging
+from services.time_service import to_api_iso
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/api/audit", tags=["audit"], dependencies=[Depends(re
 
 class AuditLogResponse(BaseModel):
     id: int
-    timestamp: datetime
+    timestamp: str  # ISO 8601 có offset — audit_logs lưu UTC
     staff_username: str
     action: str
     target_type: Optional[str] = None
@@ -79,4 +80,16 @@ def get_audit_logs(
         .all()
     )
 
-    return results
+    # audit_logs.timestamp lưu UTC (Python utcnow()) — gắn offset +00:00
+    return [
+        AuditLogResponse(
+            id=r.id,
+            timestamp=to_api_iso(r.timestamp, "UTC"),
+            staff_username=r.staff_username,
+            action=r.action,
+            target_type=r.target_type,
+            target_id=r.target_id,
+            detail=r.detail,
+        )
+        for r in results
+    ]
