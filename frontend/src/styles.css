@@ -221,6 +221,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #74c7cf; outline-offs
 .dashboard-door-copy { margin: 0; color: var(--ink); font-size: var(--text-sm); font-weight: 650; }
 .dashboard-door-by, .dashboard-demo-note { margin: -8px 0 0; color: var(--muted); font-size: var(--text-xs); }
 .dashboard-door-button { width: 100%; }
+.dashboard-door-badges { display: flex !important; flex: 0 0 auto !important; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.dashboard-door-realtime-warning { max-width: 190px; white-space: normal; text-align: center; }
 .dashboard-latest-card { min-height: 0; }
 .dashboard-announcement { margin: 0; padding: var(--space-4); border-left: 4px solid var(--bad); border-radius: var(--radius-sm); color: var(--bad); background: var(--danger-surface); font-size: var(--text-md); font-weight: 750; line-height: 1.5; }
 .dashboard-announcement--granted { border-color: var(--good); color: var(--good); background: var(--good-bg); }

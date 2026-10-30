@@ -113,25 +113,30 @@ function dispatchMockDoorState(data) {
 
 // TODO(B17): chỉ dùng khi VITE_MOCK_ADMIN=1; còn lại Dashboard gọi GET /api/door/status.
 export async function mockGetDoorStatus() {
-  const isOpen = mockDoorUntil > Date.now()
+  const now = performance.now()
+  const isOpen = mockDoorUntil > now
+  const remainingSeconds = isOpen ? Math.ceil((mockDoorUntil - now) / 1000) : 0
   return {
     state: isOpen ? 'open' : 'closed',
-    until: isOpen ? new Date(mockDoorUntil).toISOString() : null,
+    remaining_seconds: remainingSeconds,
+    open_seconds: remainingSeconds,
+    until: isOpen ? new Date(Date.now() + remainingSeconds * 1000).toISOString() : null,
     by: isOpen ? 'Nhân viên mô phỏng' : null,
   }
 }
 
 // TODO(B17): chỉ dùng khi VITE_MOCK_ADMIN=1; còn lại Dashboard gọi POST /api/door/open.
 export async function mockOpenDoor(reason = '') {
-  if (mockDoorUntil > Date.now()) {
-    return { ...(await mockGetDoorStatus()), open_seconds: Math.ceil((mockDoorUntil - Date.now()) / 1000), already_open: true }
+  if (mockDoorUntil > performance.now()) {
+    return { ...(await mockGetDoorStatus()), open_seconds: Math.ceil((mockDoorUntil - performance.now()) / 1000), already_open: true }
   }
 
   if (mockDoorTimer !== null) window.clearTimeout(mockDoorTimer)
-  mockDoorUntil = Date.now() + 10000
+  mockDoorUntil = performance.now() + 10000
   const openState = {
     state: 'open',
-    until: new Date(mockDoorUntil).toISOString(),
+    remaining_seconds: 10,
+    until: new Date(Date.now() + 10000).toISOString(),
     open_seconds: 10,
     by: 'Nhân viên mô phỏng',
     reason: reason || null,
@@ -141,7 +146,7 @@ export async function mockOpenDoor(reason = '') {
   mockDoorTimer = window.setTimeout(() => {
     mockDoorUntil = 0
     mockDoorTimer = null
-    dispatchMockDoorState({ state: 'closed', until: null, open_seconds: 0, by: null, reason: null })
+    dispatchMockDoorState({ state: 'closed', until: null, remaining_seconds: 0, open_seconds: 0, by: null, reason: null })
   }, 10000)
   return openState
 }
