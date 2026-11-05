@@ -2,7 +2,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../services/api.js'
 
-export default function LiveStream({ cameraStatus, connected, onStatusChange, startOnMount = false }) {
+export default function LiveStream({
+  cameraStatus,
+  connected,
+  onStatusChange,
+  startOnMount = false,
+  overlay,
+  startLabel = 'Xem trực tiếp',
+  stopLabel = 'Tắt xem trực tiếp',
+  disabled = false,
+}) {
   const [enabled, setEnabled] = useState(false)
   const [streamTimestamp, setStreamTimestamp] = useState(0)
   const [retrying, setRetrying] = useState(false)
@@ -118,31 +127,48 @@ export default function LiveStream({ cameraStatus, connected, onStatusChange, st
 
   const streamUrl = `${API_BASE_URL}/api/stream?t=${streamTimestamp}`
   const showImage = enabled && !cameraUnavailable && streamTimestamp > 0
+  const aspectRatio = cameraStatus?.width && cameraStatus?.height
+    ? `${cameraStatus.width} / ${cameraStatus.height}`
+    : '4 / 3'
 
   return (
     <section className="live-stream" aria-label="Camera trực tiếp">
       <div className="live-stream__controls">
-        <button type="button" onClick={enabled ? stopStream : startStream}>
-          {enabled ? 'Tắt xem trực tiếp' : 'Xem trực tiếp'}
+        <button type="button" disabled={disabled} onClick={enabled ? stopStream : startStream}>
+          {enabled ? stopLabel : startLabel}
         </button>
       </div>
 
       {showImage && (
-        <div className="live-stream__frame">
+        <div className="live-stream__frame" style={{ aspectRatio }}>
           <img
             ref={imageRef}
             className="live-stream__image"
             src={streamUrl}
             alt="Hình ảnh camera trực tiếp"
+            style={{ aspectRatio }}
             onLoad={() => setRetrying(false)}
             onError={() => scheduleRetry(streamTimestamp)}
           />
+          {overlay}
           {retrying && <p className="live-stream__retry" role="status">Đang kết nối lại camera...</p>}
         </div>
       )}
 
-      {!enabled && <p>Stream đang tắt, AI vẫn chạy.</p>}
-      {enabled && cameraUnavailable && <p>Camera chưa sẵn sàng.</p>}
+      {!enabled && overlay && (
+        <div className="live-stream__frame live-stream__frame--off" style={{ aspectRatio }}>
+          {overlay}
+          <p>Stream đang tắt, AI vẫn chạy.</p>
+        </div>
+      )}
+      {!enabled && !overlay && <p>Stream đang tắt, AI vẫn chạy.</p>}
+      {enabled && cameraUnavailable && overlay && (
+        <div className="live-stream__frame live-stream__frame--off" style={{ aspectRatio }}>
+          {overlay}
+          <p>Camera chưa sẵn sàng.</p>
+        </div>
+      )}
+      {enabled && cameraUnavailable && !overlay && <p>Camera chưa sẵn sàng.</p>}
       {enabled && cameraUnavailable && retrying && <p role="status">Đang kết nối lại camera...</p>}
     </section>
   )

@@ -60,7 +60,11 @@ export function useDashboardSocket() {
               setRecording(event.data)
               break
             case 'door_state':
+<<<<<<< HEAD
               setDoorState({ ...event.data, _receivedAt: performance.now() })
+=======
+              setDoorState(event.data)
+>>>>>>> agent/a3-fe
               break
             default:
               // Bỏ qua ping và các event chưa được giao diện sử dụng.
@@ -71,11 +75,15 @@ export function useDashboardSocket() {
         }
       }
       currentSocket.onerror = () => currentSocket.close()
-      currentSocket.onclose = () => {
+      currentSocket.onclose = (event) => {
         if (socket !== currentSocket) return
         socket = null
         connectedRef.current = false
         setConnected(false)
+        if (event.code === 1008) {
+          window.dispatchEvent(new CustomEvent('auth:expired'))
+          return
+        }
         reconnect()
       }
     }
@@ -97,7 +105,11 @@ export function useDashboardSocket() {
           setRecording(data)
           break
         case 'door_state':
+<<<<<<< HEAD
           setDoorState({ ...data, _receivedAt: performance.now() })
+=======
+          setDoorState(data)
+>>>>>>> agent/a3-fe
           break
         default:
           break
