@@ -16,13 +16,15 @@ ALLOWED = {
     "A1": ["backend/ai", "scripts/measure_pairs.py", "scripts/measure_liveness.py"],
     "A2": ["backend/api", "backend/services", "backend/database", "backend/migrations",
            "backend/alembic.ini", "backend/main.py", "backend/.env.example",
-           "scripts/tts_probe.py", "requirements.txt"],
+           "scripts/tts_probe.py", "scripts/test_speaker_routes.py", "scripts/create_manager.py",
+           "scripts/test_staff_api.py", "scripts/test_delete_resident.py", "scripts/test_logs_api.py",
+           "scripts/test_audit_api.py", "scripts/test_door_api.py", "scripts/test_b16_full.py", "requirements.txt"],
     "A3": ["frontend/src"],
     "A4": ["embedded"],
     "A5": ["esp32-cam"],
     "A6": ["tests"],
 }
-COMMON = ["docs/reports", "docs/context"]
+COMMON = ["docs/reports", "docs/context", "docs/plan"]
 
 
 def git(*args):

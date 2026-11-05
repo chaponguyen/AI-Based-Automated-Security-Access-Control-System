@@ -1,6 +1,6 @@
-// Agent 3 — Trạng thái cửa, số liệu trong ngày, hoạt động gần đây, thiết bị. Nhận cập nhật qua WebSocket.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import DoorStatus from '../components/DoorStatus.jsx'
 import LiveStream from '../components/LiveStream.jsx'
 import { useDashboardSocket } from '../hooks/useDashboardSocket.js'
 import { api, getApiErrorMessage } from '../services/api.js'
@@ -32,7 +32,7 @@ function fireMockEvent(event, data) {
 }
 
 export default function Dashboard() {
-  const { connected, lastResult, cameraStatus, aiStatus, recording } = useDashboardSocket()
+  const { connected, lastResult, cameraStatus, aiStatus, recording, doorState } = useDashboardSocket()
   const [logs, setLogs] = useState([])
   const [mockLogs, setMockLogs] = useState([])
   const [logsLoading, setLogsLoading] = useState(true)
@@ -173,6 +173,11 @@ export default function Dashboard() {
               </table>
             </div>
           )}
+        </article>
+
+        <article className="panel door-panel">
+          <div className="section-heading"><div><p className="eyebrow">THIẾT BỊ</p><h2>Điều khiển cửa</h2></div></div>
+          <DoorStatus doorState={doorState} />
         </article>
 
         <article className="panel speaker-panel">

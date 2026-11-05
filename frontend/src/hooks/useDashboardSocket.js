@@ -11,6 +11,7 @@ export function useDashboardSocket() {
   const [cameraStatus, setCameraStatus] = useState(null)
   const [aiStatus, setAiStatus] = useState(null)
   const [recording, setRecording] = useState(null)
+  const [doorState, setDoorState] = useState(null)
   const connectedRef = useRef(false)
 
   useEffect(() => {
@@ -58,6 +59,9 @@ export function useDashboardSocket() {
             case 'record_progress':
               setRecording(event.data)
               break
+            case 'door_state':
+              setDoorState({ ...event.data, _receivedAt: performance.now() })
+              break
             default:
               // Bỏ qua ping và các event chưa được giao diện sử dụng.
               break
@@ -91,6 +95,9 @@ export function useDashboardSocket() {
           break
         case 'record_progress':
           setRecording(data)
+          break
+        case 'door_state':
+          setDoorState({ ...data, _receivedAt: performance.now() })
           break
         default:
           break
@@ -131,5 +138,5 @@ export function useDashboardSocket() {
     }
   }, [])
 
-  return { connected, lastResult, cameraStatus, aiStatus, recording }
+  return { connected, lastResult, cameraStatus, aiStatus, recording, doorState }
 }
